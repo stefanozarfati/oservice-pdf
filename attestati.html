@@ -183,6 +183,10 @@ async function loadBase(f){
   renderOverlay();
 }
 // ---- campi UI ----
+function dataColCount(){try{const r=rows();let n=1;for(const row of r)n=Math.max(n,row.length);return n;}catch(_){return 1;}}
+function colPreview(idx){try{const r=rows();for(const row of r){if(row[idx]&&row[idx].trim())return row[idx].trim();}}catch(_){}return '';}
+function varColIndex(f){const vars=FIELDS.filter(x=>x.type==='var');return (f.col!=null)?f.col:vars.indexOf(f);}
+function colSelectHTML(f){const cur=varColIndex(f);const n=Math.max(dataColCount(),cur+1);let opts='';for(let i=0;i<n;i++){const pv=colPreview(i);const lab='Colonna '+(i+1)+(pv?(' — '+(pv.length>18?pv.slice(0,18)+'…':pv)):'');opts+=`<option value="${i}" ${i===cur?'selected':''}>${lab.replace(/"/g,'&quot;')}</option>`;}return `<select class="colsel">${opts}</select>`;}
 function renderFields(){
   const c=$('#fields');c.innerHTML='';
   FIELDS.forEach(f=>{
@@ -220,14 +224,15 @@ function renderFields(){
     d.innerHTML=`<div class="top"><input class="nm" value="${f.label}"><button title="rimuovi">✕</button></div>
       <div class="grid">
         <span>Tipo</span><div class="seg tipo"><button data-v="fix"${f.type==='fix'?' class="on"':''}>Fisso</button><button data-v="var"${f.type==='var'?' class="on"':''}>Variabile</button></div>
-        <span>Testo</span><input type="text" class="val" value="${f.type==='fix'?f.value.replace(/"/g,'&quot;'):'(dai partecipanti)'}" ${f.type==='var'?'disabled':''}>
+        <span>${f.type==='var'?'Colonna':'Testo'}</span>${f.type==='var'?colSelectHTML(f):`<input type="text" class="val" value="${f.value.replace(/"/g,'&quot;')}">`}
         <span>Font</span><select class="font">${Object.keys(FONTS).map(k=>`<option ${f.font===k?'selected':''}>${k}</option>`).join('')}</select>
         <span>Dim/Col</span><div class="rowline"><input type="number" class="size" value="${f.size}" min="6" max="120" style="width:64px"><input type="color" class="col" value="${f.color}"><div class="seg align"><button data-v="left"${f.align==='left'?' class="on"':''}>⯇</button><button data-v="center"${(f.align||'center')==='center'?' class="on"':''}>≡</button><button data-v="right"${f.align==='right'?' class="on"':''}>⯈</button></div></div><span>Largh. max</span><input type="range" class="mw" min="20" max="100" value="${f.maxw||100}"><div class="row"><label>Righe max</label><button class="rlm">&#8722;</button><span class="numval rlv">${f.maxLines||'&#8734;'}</span><button class="rlp">+</button></div>
       </div>`;
     d.querySelector('.nm').oninput=e=>{f.label=e.target.value;renderOverlay();};
     d.querySelector('.top button').onclick=ev=>{ev.stopPropagation();FIELDS=FIELDS.filter(x=>x.id!==f.id);if(sel===f.id)sel=FIELDS[0]?.id;renderFields();renderOverlay();};
     d.querySelectorAll('.tipo button').forEach(b=>b.onclick=ev=>{ev.stopPropagation();f.type=b.dataset.v;renderFields();renderOverlay();});
-    d.querySelector('.val').oninput=e=>{f.value=e.target.value;renderOverlay();};
+    d.querySelector('.val')&&(d.querySelector('.val').oninput=e=>{f.value=e.target.value;renderOverlay();});
+    d.querySelector('.colsel')&&(d.querySelector('.colsel').onchange=e=>{f.col=+e.target.value;renderOverlay();});
     d.querySelector('.font').onchange=e=>{f.font=e.target.value;renderOverlay();};
     d.querySelector('.size').oninput=e=>{f.size=+e.target.value;renderOverlay();};
     d.querySelector('.col').oninput=e=>{f.color=e.target.value;renderOverlay();};
@@ -545,8 +550,9 @@ $('#projSave').onclick=async()=>{const name=$('#projName').value.trim();if(!name
 });
 // ---- dati ----
 function rows(){return $('#data').value.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>l.split(/[;\t]/).map(s=>s.trim()));}
-$('#data').addEventListener('input',()=>{const r=rows();$('#count').textContent=r.length?`${r.length} partecipanti`:'';renderOverlay();});
-function valueFor(f,row){if(f.type==='fix')return f.value; const vars=FIELDS.filter(x=>x.type==='var');const idx=vars.indexOf(f);return (row&&row[idx])||f.label.toUpperCase();}
+$('#data').addEventListener('input',()=>{const r=rows();$('#count').textContent=r.length?`${r.length} partecipanti`:'';refreshColSelects();renderOverlay();});
+function refreshColSelects(){ document.querySelectorAll('#fields .fld').forEach((d,i)=>{ const sel=d.querySelector('.colsel'); if(sel){ const f=FIELDS[i]; if(f&&f.type==='var'){ const cur=varColIndex(f); const tmp=document.createElement('div'); tmp.innerHTML=colSelectHTML(f); const fresh=tmp.firstChild; fresh.value=cur; sel.replaceWith(fresh); fresh.onchange=e=>{f.col=+e.target.value;renderOverlay();}; } } }); }
+function valueFor(f,row){if(f.type==='fix')return f.value; const vars=FIELDS.filter(x=>x.type==='var');const idx=(f.col!=null)?f.col:vars.indexOf(f);return (row&&row[idx])||f.label.toUpperCase();}
 // ---- overlay anteprima ----
 const stage=$('#stage'),overlay=$('#overlay');
 function stageW(){return stage.clientWidth||640;}
