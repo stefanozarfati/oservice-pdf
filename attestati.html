@@ -485,7 +485,7 @@ $('#ocrfile').onchange=async(e)=>{
   }catch(err){alert('OCR non riuscito: '+err.message);console.error(err);}
   finally{ if(worker){try{await worker.terminate();}catch(_){}} prog.style.display='none'; }
 };
-if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{}));}
 try{ const lastProj=localStorage.getItem('oservice-current-project'); if(lastProj) setCurrentProjectLabel(lastProj); }catch(_){}
 // ===== PROGETTI (IndexedDB) =====
 function idb(){return new Promise((res,rej)=>{const r=indexedDB.open('oservice-attestati-db',1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('projects'))r.result.createObjectStore('projects',{keyPath:'name'});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}

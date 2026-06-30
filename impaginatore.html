@@ -230,5 +230,5 @@ $('#gen').onclick=async()=>{
   }catch(e){alert('Errore: '+e.message);console.error(e);}
   finally{$('#gen').disabled=false;$('#gen').textContent='Genera PDF';}
 };
-if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{}));}
 </script></body></html>
