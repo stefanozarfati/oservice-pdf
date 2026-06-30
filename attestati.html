@@ -507,6 +507,8 @@ async function loadProject(name){
   const rec=await idbGet(name); if(!rec)return;
   setCurrentProjectLabel(name);
   FIELDS=rec.fields; LAY=rec.lay||'2';
+  // migrazione progetti salvati prima dell'introduzione di maxLines: il campo Nome torna a 2 righe max
+  FIELDS.forEach(f=>{ if(f.maxLines===undefined && !f.kind && /nome/i.test(f.label||'')) f.maxLines=2; });
   nextId=(rec.counters&&rec.counters.nextId)||(Math.max(0,...FIELDS.map(f=>f.id))+1);
   nextLogo=(rec.counters&&rec.counters.nextLogo)||1; nextFont=(rec.counters&&rec.counters.nextFont)||1;
   LOGOS=(rec.logos||[]).map(L=>{const u8=new Uint8Array(L.bytes);return {id:L.id,name:L.name,mime:L.mime,bytes:u8,url:URL.createObjectURL(new Blob([u8],{type:L.mime}))};});
