@@ -137,7 +137,7 @@ let BASE=null; // {kind:'img'|'pdf', bytes, mime, url, w,h}
 let FIELDS=[
  {id:1,label:'Titolo',type:'fix',value:'ATTESTATO DI PARTECIPAZIONE',font:'Helvetica-Bold',size:16,color:'#F36A01',x:50,y:17,align:'center'},
  {id:2,label:'Sottotitolo',type:'fix',value:'si attesta la partecipazione di',font:'Times',size:13,color:'#283848',x:50,y:29,align:'center'},
- {id:3,label:'Nome',type:'var',value:'',font:'Cinzel',size:34,color:'#062A63',x:50,y:58,align:'center',maxw:62},
+ {id:3,label:'Nome',type:'var',value:'',font:'Cinzel',size:34,color:'#062A63',x:50,y:58,align:'center',maxw:62,maxLines:2},
  {id:4,label:'Corso e data',type:'fix',value:'Corso di Orienteering \u00b7 Maggio 2026',font:'Helvetica-Bold',size:13,color:'#062A63',x:50,y:88,align:'center'}
 ];
 let nextId=5, sel=1, LAY='2';
@@ -222,7 +222,7 @@ function renderFields(){
         <span>Tipo</span><div class="seg tipo"><button data-v="fix"${f.type==='fix'?' class="on"':''}>Fisso</button><button data-v="var"${f.type==='var'?' class="on"':''}>Variabile</button></div>
         <span>Testo</span><input type="text" class="val" value="${f.type==='fix'?f.value.replace(/"/g,'&quot;'):'(dai partecipanti)'}" ${f.type==='var'?'disabled':''}>
         <span>Font</span><select class="font">${Object.keys(FONTS).map(k=>`<option ${f.font===k?'selected':''}>${k}</option>`).join('')}</select>
-        <span>Dim/Col</span><div class="rowline"><input type="number" class="size" value="${f.size}" min="6" max="120" style="width:64px"><input type="color" class="col" value="${f.color}"><div class="seg align"><button data-v="left"${f.align==='left'?' class="on"':''}>⯇</button><button data-v="center"${(f.align||'center')==='center'?' class="on"':''}>≡</button><button data-v="right"${f.align==='right'?' class="on"':''}>⯈</button></div></div><span>Largh. max</span><input type="range" class="mw" min="20" max="100" value="${f.maxw||100}">
+        <span>Dim/Col</span><div class="rowline"><input type="number" class="size" value="${f.size}" min="6" max="120" style="width:64px"><input type="color" class="col" value="${f.color}"><div class="seg align"><button data-v="left"${f.align==='left'?' class="on"':''}>⯇</button><button data-v="center"${(f.align||'center')==='center'?' class="on"':''}>≡</button><button data-v="right"${f.align==='right'?' class="on"':''}>⯈</button></div></div><span>Largh. max</span><input type="range" class="mw" min="20" max="100" value="${f.maxw||100}"><div class="row"><label>Righe max</label><button class="rlm">&#8722;</button><span class="numval rlv">${f.maxLines||'&#8734;'}</span><button class="rlp">+</button></div>
       </div>`;
     d.querySelector('.nm').oninput=e=>{f.label=e.target.value;renderOverlay();};
     d.querySelector('.top button').onclick=ev=>{ev.stopPropagation();FIELDS=FIELDS.filter(x=>x.id!==f.id);if(sel===f.id)sel=FIELDS[0]?.id;renderFields();renderOverlay();};
@@ -232,6 +232,9 @@ function renderFields(){
     d.querySelector('.size').oninput=e=>{f.size=+e.target.value;renderOverlay();};
     d.querySelector('.col').oninput=e=>{f.color=e.target.value;renderOverlay();};
     d.querySelector('.mw')&&(d.querySelector('.mw').oninput=e=>{f.maxw=+e.target.value;renderOverlay();});
+    d.querySelector('.rlm')&&(d.querySelector('.rlm').onclick=()=>{const v=f.maxLines||4;if(v>1){f.maxLines=v-1;}else{delete f.maxLines;}d.querySelector('.rlv').textContent=f.maxLines||'∞';renderOverlay();});
+    d.querySelector('.rlp')&&(d.querySelector('.rlp').onclick=()=>{const v=f.maxLines||0;f.maxLines=v===0?4:v+1;d.querySelector('.rlv').textContent=f.maxLines;renderOverlay();});
+
     d.querySelectorAll('.align button').forEach(b=>b.onclick=ev=>{ev.stopPropagation();f.align=b.dataset.v;renderFields();renderOverlay();});
     c.appendChild(d);
   });
@@ -573,9 +576,12 @@ function renderOverlay(){
     el.style.fontWeight=FONTS[f.font]?.weight||400;
     el.style.fontSize=(f.size*pxPerPt)+'px';el.style.color=f.color;
     el.style.textAlign=(f.align||'center');el.style.lineHeight='1.18';el.style.whiteSpace='pre';{const _a=f.align||'center';el.style.transform=_a==='left'?'translate(0,-50%)':_a==='right'?'translate(-100%,-50%)':'translate(-50%,-50%)';}
-    _mctx.font=(FONTS[f.font]&&FONTS[f.font].weight||400)+' '+(f.size*pxPerPt)+'px '+((FONTS[f.font]&&FONTS[f.font].css)||'sans-serif');
-    const _maxW=((f.maxw||100)/100)*sw;
-    el.textContent=wrapByMeasure(s=>_mctx.measureText(s).width, valueFor(f,r), _maxW).join('\n');
+    {const _maxLines=f.maxLines||99;const _maxW=((f.maxw||100)/100)*sw;
+      let _sz=f.size;const _szMin=Math.max(8,Math.round(f.size*0.5));let _lines;
+      do{_mctx.font=(FONTS[f.font]&&FONTS[f.font].weight||400)+' '+(_sz*pxPerPt)+'px '+((FONTS[f.font]&&FONTS[f.font].css)||'sans-serif');
+        _lines=wrapByMeasure(s=>_mctx.measureText(s).width,valueFor(f,r),_maxW);
+        if(_lines.length<=_maxLines||_sz<=_szMin)break;_sz--;}while(true);
+      el.style.fontSize=(_sz*pxPerPt)+'px';el.textContent=_lines.join('\n');}
     el.onmousedown=e=>startDrag(e,f);
     el.onclick=e=>{e.stopPropagation();sel=f.id;renderFields();renderOverlay();};
     overlay.appendChild(el);
@@ -620,7 +626,9 @@ $('#gen').onclick=async()=>{
         page.drawLine({start:{x:cx-half,y:cy},end:{x:cx+half,y:cy},thickness:f.thick,color:col});
         if(f.diamond){const dd=Math.max(2.4,f.thick*2.4);page.drawSvgPath('M '+(-dd)+' 0 L 0 '+(-dd)+' L '+dd+' 0 L 0 '+dd+' Z',{x:cx,y:cy,color:col});}
         continue;}
-      const font=await embFont(doc,f.font,fontCache);const txt=valueFor(f,row);const al=f.align||'center';const maxWpt=((f.maxw||100)/100)*W;const lines=wrapText(font,txt,f.size,maxWpt);const lh=f.size*1.18;const blockH=(lines.length-1)*lh;const yPt=oy+H-(f.y/100)*H;lines.forEach((ln,li)=>{const tw=font.widthOfTextAtSize(ln,f.size);let tx=ox+(f.x/100)*W;if(al==='center')tx-=tw/2;else if(al==='right')tx-=tw;const ty=yPt+blockH/2-li*lh-f.size*0.35;page.drawText(ln,{x:tx,y:ty,size:f.size,font,color:hex(f.color)});});}};
+      const font=await embFont(doc,f.font,fontCache);const txt=valueFor(f,row);const al=f.align||'center';const maxWpt=((f.maxw||100)/100)*W;let _pdfSz=f.size;const _pdfSzMin=Math.max(8,Math.round(f.size*0.5));const _pdfML=f.maxLines||99;
+    let lines;do{lines=wrapText(font,txt,_pdfSz,maxWpt);if(lines.length<=_pdfML||_pdfSz<=_pdfSzMin)break;_pdfSz--;}while(true);
+    const lh=_pdfSz*1.18;const blockH=(lines.length-1)*lh;const yPt=oy+H-(f.y/100)*H;lines.forEach((ln,li)=>{const tw=font.widthOfTextAtSize(ln,_pdfSz);let tx=ox+(f.x/100)*W;if(al==='center')tx-=tw/2;else if(al==='right')tx-=tw;const ty=yPt+blockH/2-li*lh-_pdfSz*0.35;page.drawText(ln,{x:tx,y:ty,size:_pdfSz,font,color:hex(f.color)});});}};
     const [W5,H5]=A5L;
     if(LAY==='1'){
       for(const row of data){const page=doc.addPage([W5,H5]);drawBase(page,0,0,W5,H5);await drawFields(page,0,0,W5,H5,row);}
