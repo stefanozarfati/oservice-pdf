@@ -1,4 +1,4 @@
-const CACHE='oservice-suite-v8';
+const CACHE='oservice-suite-v12';
 const ASSETS=[
   './','./index.html','./attestati.html','./impaginatore.html','./manifest.json',
   './lib/pdf-lib-bundle.js',
