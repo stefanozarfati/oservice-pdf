@@ -281,17 +281,69 @@ $('#listfile').onchange=async(e)=>{
 };
 $('#expList').onclick=()=>{
   const r=rows(); if(!r.length){alert('Nessun nome da esportare.');return;}
-  const vars=FIELDS.filter(x=>x.type==='var'); const header=vars.length?vars.map(f=>f.label):['Nome'];
-  const aoa=[header,...r.map(row=>{const o=[...row];while(o.length<header.length)o.push('');return o;})];
+  const header=['Cognome e Nome','Classe','Sesso'];
+  const aoa=[header,...r.map(row=>{
+    const nome=(row[0]||'').trim();
+    const meta=OCRMETA[nome]||{};
+    const sesso=meta.sesso||inferGender(nome)||'';
+    return [nome, meta.classe||'', sesso];
+  })];
   const ws=XLSX.utils.aoa_to_sheet(aoa); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Lista');
   XLSX.writeFile(wb,'lista_attestati.xlsx');
 };
-function parseNames(text){
-  return (text||'').split('\n').map(l=>l.trim())
-    .map(l=>l.replace(/^[\s\d.,;:#°|/\\()\-_*]+/,'').replace(/[\s\d.,;:#°|/\\()_*]+$/,'').trim())
-    .filter(l=>{const letters=(l.match(/[A-Za-zÀ-ÿ]/g)||[]).length;const words=l.split(/\s+/).filter(w=>/[A-Za-zÀ-ÿ]{2,}/.test(w));return letters>=4&&words.length>=1&&words.length<=5&&!/\b(registro|elenco|lista|classe|sezione|scuola|istituto|anno|data|firma|cognome|alunn\w*|studen\w*|progr\w*|pag\w*|n\.?ro)\b/i.test(l);})
-    .map(normName);
+const CLASS_RE=/\b(\d{1,2})\s*[\^°*ª\-_.]?\s*([A-Za-z])\b/;
+function extractClasseFromFilename(name){
+  const base=(name||'').replace(/\.[^.]+$/,'');
+  const m=base.match(CLASS_RE); return m?(m[1]+m[2].toUpperCase()):null;
 }
+function extractClasseFromText(text){
+  const lines=(text||'').split('\n').slice(0,12);
+  for(const raw of lines){
+    const l=raw.trim();
+    if(!l)continue;
+    const m=l.match(CLASS_RE);
+    if(m && l.length<=28){ return m[1]+m[2].toUpperCase(); }
+  }
+  return null;
+}
+const MALE_EXC=new Set(['andrea','luca','nicola','mattia','elia','enea','tobia','geremia','boris','jonas','gioele','giosuè','isaia','samuele','emanuele','daniele','michele','gabriele','raffaele','ezechiele','noè']);
+const NAME_GENDER={mario:'M',giuseppe:'M',giovanni:'M',francesco:'M',antonio:'M',marco:'M',luigi:'M',alessandro:'M',paolo:'M',roberto:'M',stefano:'M',matteo:'M',simone:'M',davide:'M',federico:'M',lorenzo:'M',riccardo:'M',tommaso:'M',leonardo:'M',edoardo:'M',pietro:'M',filippo:'M',cristian:'M',cristiano:'M',valentino:'M',sebastiano:'M',vincenzo:'M',salvatore:'M',carlo:'M',claudio:'M',fabio:'M',massimo:'M',maurizio:'M',alberto:'M',renato:'M',franco:'M',bruno:'M',aldo:'M',dario:'M',ivan:'M',gianni:'M',angelo:'M',domenico:'M',pasquale:'M',raffaele:'M',sergio:'M',mirko:'M',jacopo:'M',niccolò:'M',niccolo:'M',gabriel:'M',christian:'M',thomas:'M',adam:'M',ahmed:'M',youssef:'M',omar:'M',rayan:'M',amir:'M',said:'M',mohamed:'M',
+maria:'F',anna:'F',giulia:'F',sara:'F',chiara:'F',francesca:'F',laura:'F',elena:'F',valentina:'F',alessia:'F',federica:'F',silvia:'F',giorgia:'F',martina:'F',alice:'F',beatrice:'F',aurora:'F',sofia:'F',sophia:'F',emma:'F',greta:'F',rebecca:'F',camilla:'F',ginevra:'F',noemi:'F',vittoria:'F',gaia:'F',asia:'F',matilde:'F',bianca:'F',ludovica:'F',caterina:'F',cristina:'F',paola:'F',roberta:'F',simona:'F',monica:'F',patrizia:'F',daniela:'F',sabrina:'F',ilaria:'F',serena:'F',veronica:'F',jasmine:'F',nicole:'F',melissa:'F',angela:'F',rosa:'F',teresa:'F',lucia:'F',carla:'F',franca:'F',luisa:'F',elisa:'F',irene:'F',miriam:'F',rachele:'F',agnese:'F',adele:'F',fatima:'F',aisha:'F',amira:'F',leila:'F'};
+function inferGender(fullName){
+  const parts=(fullName||'').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length)return '';
+  const first=parts[parts.length-1].toLowerCase().replace(/['’].*$/,'');
+  if(NAME_GENDER[first])return NAME_GENDER[first];
+  if(MALE_EXC.has(first))return 'M';
+  if(/a$/.test(first))return 'F';
+  if(/o$/.test(first))return 'M';
+  if(/[eì]$/.test(first))return 'F';
+  return '';
+}
+const NONNAME_RE=/\b(registro|elenco|lista|classe|sezione|sezion|scuola|istituto|comprensivo|comune|comprens|indirizzo|anno|scolastico|data|firma|firme|cognome|nome|alunn\w*|student\w*|progr\w*|pag\w*|n\.?ro|num\w*|maschi\w*|femmin\w*|totale\w*|presenti|assenti|nat[oa]\s|luogo|prov(incia)?|codice|fiscale|matricola|note|email|telefono|tel\.?|indirizzo|via\s|corso\s+di|orienteering|attestat\w*|partecipant\w*)\b/i;
+function parseNamesDetailed(text){
+  return (text||'').split('\n').map(l=>l.trim())
+    .map(l=>{
+      let sesso=null;
+      const gm=l.match(/[\s\(\[]([MF])[\)\]]?\s*$/i);
+      if(gm){ sesso=gm[1].toUpperCase(); l=l.slice(0,gm.index).trim(); }
+      l=l.replace(/^[\s\d.,;:#°|/\\()\-_*]+/,'').replace(/[\s\d.,;:#°|/\\()_*]+$/,'').trim();
+      return {raw:l, sesso};
+    })
+    .filter(({raw:l})=>{
+      if(!l)return false;
+      if(CLASS_RE.test(l) && l.replace(CLASS_RE,'').trim().length<2) return false; // riga = solo classe
+      const letters=(l.match(/[A-Za-zÀ-ÿ]/g)||[]).length;
+      const words=l.split(/\s+/).filter(w=>/^[A-Za-zÀ-ÿ'’.-]{2,}$/.test(w));
+      if(letters<4||words.length<1||words.length>5)return false;
+      if(words.length!==l.split(/\s+/).length)return false; // scarta righe con token non-alfabetici residui
+      if(NONNAME_RE.test(l))return false;
+      return true;
+    })
+    .map(({raw,sesso})=>({nome:normName(raw), sesso}));
+}
+function parseNames(text){ return parseNamesDetailed(text).map(o=>o.nome); }
+let OCRMETA={};
 $('#ocrBtn').onclick=()=>{ if(typeof Tesseract==='undefined'){alert('Modulo OCR non disponibile: apri l\'app installata (PWA) almeno una volta online.');return;} $('#ocrfile').click(); };
 async function preprocessOCR(file){
   let bmp,w0,h0;
@@ -319,7 +371,12 @@ $('#ocrfile').onchange=async(e)=>{
       prog.textContent=cur+' preparo immagine…';
       const canvas=await preprocessOCR(files[i]);
       const {data:{text}}=await worker.recognize(canvas);
-      allNames=allNames.concat(parseNames(text));
+      const classe=extractClasseFromFilename(files[i].name)||extractClasseFromText(text)||'';
+      const entries=parseNamesDetailed(text);
+      for(const en of entries){
+        OCRMETA[en.nome]={classe, sesso:en.sesso||inferGender(en.nome)||''};
+        allNames.push(en.nome);
+      }
     }
     if(!allNames.length){alert('Nessun nome riconosciuto. Usa foto più nitide o inserisci a mano.');}
     else{ const ex=$('#data').value.trim(); $('#data').value=(ex?ex+'\n':'')+allNames.join('\n'); $('#data').dispatchEvent(new Event('input')); }
