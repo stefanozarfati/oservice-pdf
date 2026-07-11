@@ -37,7 +37,7 @@
   .card.imp .go{color:var(--navy)}
   .stripe{position:absolute;top:0;right:0;width:74px;height:74px;transform:translate(28px,-28px) rotate(45deg)}
   .card.att .stripe{background:rgba(243,106,1,.10)}
-  .card.imp .stripe{background:rgba(6,42,99,.08)}
+  .card.imp .stripe{background:rgba(6,42,99,.08)} .card.cmp .ic{background:rgba(47,125,79,.12)} .card.cmp .stripe{background:rgba(47,125,79,.10)} .card.cmp .go{color:#2F7D4F}
   .install-btn{margin-top:28px;background:var(--orange);color:#fff;border:0;padding:13px 24px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 8px 22px rgba(243,106,1,.32)}.install-btn:hover{filter:brightness(1.05)}.ios-hint{margin-top:24px;font-size:13.5px;color:#6b7280;background:#fff;border:1px solid #e9edf2;border-radius:10px;padding:11px 16px;max-width:440px;text-align:center;line-height:1.5}.ios-hint b{color:var(--navy)}
 footer{margin-top:36px;color:#9aa3af;font-size:12.5px;text-align:center;line-height:1.6}
   footer b{color:#6b7280}
@@ -76,6 +76,15 @@ footer{margin-top:36px;color:#9aa3af;font-size:12.5px;text-align:center;line-hei
     <p>Disponi più pagine per foglio (A5, A6, poster), pronte per la stampa. Combina file o ripeti, con crocini di taglio.</p>
     <div class="go">Apri &rarr;</div>
   </a>
+      <a class="card cmp" href="comprimi.html">
+        <div class="stripe"></div>
+        <div class="ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#2F7D4F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3M9 20h6M12 4v16M7 11l5-4 5 4M7 15l5-4 5 4"/></svg>
+        </div>
+        <h2>Comprimi PDF</h2>
+        <p>Alleggerisci mappe e kit pesanti mantenendo i vettori nitidi e il testo. Motore Ghostscript, tutto in locale.</p>
+        <div class="go">Apri &rarr;</div>
+      </a>
 </div>
 
 <button id="installBtn" class="install-btn" hidden>📲 Installa l'app</button>
