@@ -1,4 +1,4 @@
-const CACHE='oservice-suite-v21';
+const CACHE='oservice-suite-v23';
 const ASSETS=[
   './','./index.html','./attestati.html','./impaginatore.html','./comprimi.html','./classifiche.html','./manifest.json',
   './gs/gs.mjs','./gs/gs.js','./gs/browser.js',  // gs.wasm (16MB) NON in precache: cache-first al primo uso

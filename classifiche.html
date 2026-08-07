@@ -95,7 +95,7 @@
   <div class="dropzone" id="dropzone">Oppure trascina qui il file XML</div>
   <div class="row" style="margin-top:10px;" id="eventRow" hidden>
     <input id="eventInfo" value="">
-    <input id="eventDate" value="" placeholder="AAAA-MM-GG">
+    <input id="eventDate" value="" placeholder="GG-MM-AAAA">
   </div>
   <div class="sub" id="eventInfoHint" hidden>Suggerimento: usa il simbolo | nel nome per andare a capo nel PDF (es. "Virgilio|Seconde")</div>
   <div id="warningsBox"></div>
@@ -309,6 +309,175 @@ function recomputeClass(cls){
 
 // Genera il PDF della classifica, stile brandizzato OService (colori campionati dal PDF di riferimento fornito da Stefano)
 
+// Codice condiviso tra buildClassificaPdf e buildSplitsPdf. Prima di questa unificazione,
+// l'intestazione era duplicata riga per riga nei due file: unica differenza reale era il titolo
+// ("CLASSIFICA ORIENTEERING" vs "INTERTEMPI ORIENTEERING"). Tenerla in un solo posto evita che i due
+// PDF si disallineino di nuovo, come già successo (correzione del simbolo "|" dimenticata in un file).
+
+function computeSharedPalette(rgb, baseColorHex) {
+  function hexToRgb01(hex) {
+    hex = (hex || '#1A3A6B').replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+    const r = parseInt(hex.substring(0, 2), 16) / 255;
+    const g = parseInt(hex.substring(2, 4), 16) / 255;
+    const b = parseInt(hex.substring(4, 6), 16) / 255;
+    return { r: isNaN(r) ? 0.1 : r, g: isNaN(g) ? 0.23 : g, b: isNaN(b) ? 0.42 : b };
+  }
+  function mix(c1, c2, amount) { return { r: c1.r + (c2.r - c1.r) * amount, g: c1.g + (c2.g - c1.g) * amount, b: c1.b + (c2.b - c1.b) * amount }; }
+  function luminance(c) { return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; }
+  function toRgb(c) { return rgb(c.r, c.g, c.b); }
+
+  const WHITE01 = { r: 1, g: 1, b: 1 }, BLACK01 = { r: 0, g: 0, b: 0 };
+  const base01 = hexToRgb01(baseColorHex);
+  const midblue01 = mix(base01, WHITE01, 0.32);
+  const zebra01 = mix(base01, WHITE01, 0.90);
+  const textOnBase01 = luminance(base01) > 0.55 ? { r: 0.12, g: 0.12, b: 0.14 } : WHITE01;
+  const textOnMidblue01 = luminance(midblue01) > 0.55 ? { r: 0.12, g: 0.12, b: 0.14 } : WHITE01;
+  const accentOnWhite01 = luminance(base01) > 0.65 ? mix(base01, BLACK01, 0.45) : base01;
+
+  return {
+    NAVY: toRgb(base01),
+    MIDBLUE: toRgb(midblue01),
+    GOLD: rgb(255/255, 214/255, 0/255),
+    SILVER: rgb(191/255, 191/255, 191/255),
+    BRONZE: rgb(205/255, 126/255, 49/255),
+    ZEBRA: toRgb(zebra01),
+    WHITE: rgb(1, 1, 1),
+    TEXT: rgb(0.12, 0.12, 0.14),
+    MUTED: rgb(0.55, 0.55, 0.58),
+    TEXT_ON_BASE: toRgb(textOnBase01),
+    TEXT_ON_MIDBLUE: toRgb(textOnMidblue01),
+    ACCENT_ON_WHITE: toRgb(accentOnWhite01),
+  };
+}
+
+function formatDateIt(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  return `${m[3]}-${m[2]}-${m[1]}`; // GG-MM-AAAA
+}
+
+function fitFontSize(text, font, maxSize, minSize, maxWidth) {
+  let size = maxSize;
+  while (size > minSize && font.widthOfTextAtSize(text, size) > maxWidth) size -= 0.5;
+  return size;
+}
+
+function centerText(text, font, size, boxX, boxW) {
+  const w = font.widthOfTextAtSize(text, size);
+  return boxX + (boxW - w) / 2;
+}
+
+// Rettangolo con angoli arrotondati opzionali. Se roundedCorners e' false si comporta come
+// page.drawRectangle. Il raggio si adatta da solo se il rettangolo e' piccolo.
+function makeDrawSection(roundedCorners) {
+  const CORNER_RADIUS = 8;
+  return function drawSection(page, x, y, width, height, fillColor, borderColor, borderWidth) {
+    if (!roundedCorners) {
+      page.drawRectangle({ x, y, width, height, color: fillColor, borderColor, borderWidth });
+      return;
+    }
+    const r = Math.min(CORNER_RADIUS, width / 2, height / 2);
+    const path = `M ${r},0 H ${width - r} A ${r},${r} 0 0 1 ${width},${r} V ${height - r} A ${r},${r} 0 0 1 ${width - r},${height} H ${r} A ${r},${r} 0 0 1 0,${height - r} V ${r} A ${r},${r} 0 0 1 ${r},0 Z`;
+    page.drawSvgPath(path, { x, y: y + height, color: fillColor, borderColor, borderWidth });
+  };
+}
+
+// Disegna l'intestazione (loghi + titolo + nome gara + data) e restituisce il nuovo cursorY.
+// Identica per classifica e intertempi: cambia solo il testo del titolo.
+function drawSharedEventHeader(p) {
+  const { page, cursorY, MARGIN, CONTENT_W, HEADER_H, fontBold, fontRegular,
+          brandLogo, clientLogo, extraLogosEmbedded, palette, eventData, title, drawSection } = p;
+  const { NAVY, MIDBLUE, TEXT_ON_BASE, TEXT_ON_MIDBLUE } = palette;
+
+  const subtitleLines = (eventData.eventName || '').split('|').map(s => s.trim()).filter(Boolean);
+  const linesCount = subtitleLines.length || 1;
+  const dateLine = eventData.eventDate ? `Data: ${formatDateIt(eventData.eventDate)}` : '';
+  const allLogos = [brandLogo, clientLogo, ...extraLogosEmbedded].filter(Boolean);
+
+  if (allLogos.length >= 3) {
+    // MOLTI loghi: vanno tutti su una riga in alto, testo sotto.
+    const LOGO_ROW_H = 42;
+    const textBlockH = 16 + linesCount * 17 + (dateLine ? 13 : 0);
+    const headerH = LOGO_ROW_H + 10 + textBlockH + 20;
+    const boxY = cursorY - headerH;
+    drawSection(MARGIN, boxY, CONTENT_W, headerH, NAVY);
+
+    const gap = 14;
+    const slotW = Math.min(72, (CONTENT_W - gap * (allLogos.length - 1)) / allLogos.length);
+    const totalW = slotW * allLogos.length + gap * (allLogos.length - 1);
+    let lx = MARGIN + (CONTENT_W - totalW) / 2;
+    const rowTopY = boxY + headerH - 12;
+    allLogos.forEach(img => {
+      const scale = Math.min(slotW / img.width, LOGO_ROW_H / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      page.drawImage(img, { x: lx + (slotW - w) / 2, y: rowTopY - LOGO_ROW_H + (LOGO_ROW_H - h) / 2, width: w, height: h });
+      lx += slotW + gap;
+    });
+
+    let ty = rowTopY - LOGO_ROW_H - 16;
+    const titleSize = fitFontSize(title, fontBold, 16, 10, CONTENT_W);
+    page.drawText(title, { x: centerText(title, fontBold, titleSize, MARGIN, CONTENT_W), y: ty, size: titleSize, font: fontBold, color: TEXT_ON_BASE });
+    ty -= 21;
+    const subSize = subtitleLines.length ? Math.min(...subtitleLines.map(l => fitFontSize(l, fontBold, 12, 7, CONTENT_W))) : 12;
+    subtitleLines.forEach(line => {
+      page.drawText(line, { x: centerText(line, fontBold, subSize, MARGIN, CONTENT_W), y: ty, size: subSize, font: fontBold, color: TEXT_ON_BASE });
+      ty -= 17;
+    });
+    if (dateLine) {
+      page.drawText(dateLine, { x: centerText(dateLine, fontRegular, 9.5, MARGIN, CONTENT_W), y: ty, size: 9.5, font: fontRegular, color: TEXT_ON_BASE });
+    }
+    return boxY - 14;
+  }
+
+  // 0, 1 o 2 loghi: layout classico ai due lati.
+  const dynamicHeaderH = 58 + linesCount * 17;
+  const headerH = Math.max(HEADER_H, dynamicHeaderH);
+  const boxY = cursorY - headerH;
+  drawSection(MARGIN, boxY, CONTENT_W, headerH, NAVY);
+
+  const LOGO_ZONE_W = 150;
+  const LOGO_PAD = 8;
+  const leftZone = brandLogo ? LOGO_ZONE_W : 0;
+  const rightLogo = clientLogo || brandLogo;
+  const rightZone = rightLogo ? LOGO_ZONE_W : 0;
+
+  function drawLogoFit(img, zoneX, zoneW, maxH) {
+    if (!img) return;
+    const maxW = zoneW - 24;
+    const scale = Math.min(maxW / img.width, maxH / img.height);
+    const w = img.width * scale, h = img.height * scale;
+    const x = zoneX + (zoneW - w) / 2;
+    const y = boxY + (headerH - h) / 2;
+    page.drawImage(img, { x, y, width: w, height: h });
+  }
+  drawLogoFit(brandLogo, MARGIN, leftZone, headerH - LOGO_PAD * 2);
+  drawLogoFit(rightLogo, MARGIN + CONTENT_W - rightZone, rightZone, headerH - LOGO_PAD * 2);
+
+  const textGapLeft = leftZone ? LOGO_PAD : 0;
+  const textGapRight = rightZone ? LOGO_PAD : 0;
+  const textZoneX = MARGIN + leftZone + textGapLeft;
+  const textZoneW = CONTENT_W - leftZone - rightZone - textGapLeft - textGapRight;
+
+  let ty = boxY + headerH - 24;
+  const titleSize2 = fitFontSize(title, fontBold, 16, 10, textZoneW);
+  page.drawText(title, { x: centerText(title, fontBold, titleSize2, textZoneX, textZoneW), y: ty, size: titleSize2, font: fontBold, color: TEXT_ON_BASE });
+  ty -= 21;
+  const subSize2 = subtitleLines.length ? Math.min(...subtitleLines.map(l => fitFontSize(l, fontBold, 12, 7, textZoneW))) : 12;
+  subtitleLines.forEach(line => {
+    page.drawText(line, { x: centerText(line, fontBold, subSize2, textZoneX, textZoneW), y: ty, size: subSize2, font: fontBold, color: TEXT_ON_BASE });
+    ty -= 17;
+  });
+  if (dateLine) {
+    page.drawText(dateLine, { x: centerText(dateLine, fontRegular, 9.5, textZoneX, textZoneW), y: ty, size: 9.5, font: fontRegular, color: TEXT_ON_BASE });
+  }
+  return boxY - 14;
+}
+
+// Genera il PDF della classifica, stile brandizzato OService. Usa il codice condiviso in
+// pdfgen_shared.js per palette, intestazione, formato data e restringimento font, cosi' resta
+// sempre identico al motore degli intertempi (niente più copie che si disallineano).
+
 function buildClassificaPdf(PDFLib, eventData, options) {
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
 
@@ -323,42 +492,9 @@ function buildClassificaPdf(PDFLib, eventData, options) {
     roundedCorners: false,
   }, options);
 
-  // Palette: tutta derivata da un unico colore base scelto dall'utente, cosi' resta coerente
-  // e leggibile qualunque tinta si scelga (calcolo automatico bianco/scuro per il testo).
-  function hexToRgb01(hex) {
-    hex = (hex || '#1A3A6B').replace('#', '');
-    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
-    const r = parseInt(hex.substring(0, 2), 16) / 255;
-    const g = parseInt(hex.substring(2, 4), 16) / 255;
-    const b = parseInt(hex.substring(4, 6), 16) / 255;
-    return { r: isNaN(r) ? 0.1 : r, g: isNaN(g) ? 0.23 : g, b: isNaN(b) ? 0.42 : b };
-  }
-  function mix(c1, c2, amount) {
-    return { r: c1.r + (c2.r - c1.r) * amount, g: c1.g + (c2.g - c1.g) * amount, b: c1.b + (c2.b - c1.b) * amount };
-  }
-  function luminance(c) { return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; }
-  function toRgb(c) { return rgb(c.r, c.g, c.b); }
-
-  const WHITE01 = { r: 1, g: 1, b: 1 }, BLACK01 = { r: 0, g: 0, b: 0 };
-  const base01 = hexToRgb01(opts.baseColorHex);
-  const midblue01 = mix(base01, WHITE01, 0.32);
-  const zebra01 = mix(base01, WHITE01, 0.90);
-  const textOnBase01 = luminance(base01) > 0.55 ? { r: 0.12, g: 0.12, b: 0.14 } : WHITE01;
-  const textOnMidblue01 = luminance(midblue01) > 0.55 ? { r: 0.12, g: 0.12, b: 0.14 } : WHITE01;
-  const accentOnWhite01 = luminance(base01) > 0.65 ? mix(base01, BLACK01, 0.45) : base01;
-
-  const NAVY = toRgb(base01);
-  const MIDBLUE = toRgb(midblue01);
-  const GOLD = rgb(255/255, 214/255, 0/255);
-  const SILVER = rgb(191/255, 191/255, 191/255);
-  const BRONZE = rgb(205/255, 126/255, 49/255);
-  const ZEBRA = toRgb(zebra01);
-  const WHITE = rgb(1, 1, 1);
-  const TEXT = rgb(0.12, 0.12, 0.14);
-  const MUTED = rgb(0.55, 0.55, 0.58);
-  const TEXT_ON_BASE = toRgb(textOnBase01);
-  const TEXT_ON_MIDBLUE = toRgb(textOnMidblue01);
-  const ACCENT_ON_WHITE = toRgb(accentOnWhite01);
+  const palette = computeSharedPalette(rgb, opts.baseColorHex);
+  const { NAVY, MIDBLUE, GOLD, SILVER, BRONZE, ZEBRA, WHITE, TEXT, MUTED, TEXT_ON_BASE, TEXT_ON_MIDBLUE, ACCENT_ON_WHITE } = palette;
+  const drawSectionShared = makeDrawSection(opts.roundedCorners);
 
   return (async () => {
     const pdfDoc = await PDFDocument.create();
@@ -419,132 +555,18 @@ function buildClassificaPdf(PDFLib, eventData, options) {
       return page;
     }
 
-    function centerText(text, font, size, boxX, boxW) {
-      const w = font.widthOfTextAtSize(text, size);
-      return boxX + (boxW - w) / 2;
-    }
-
-    // Rettangolo con angoli arrotondati opzionali: se opts.roundedCorners e' false, si comporta
-    // esattamente come page.drawRectangle. Il raggio si adatta da solo se il rettangolo e' piccolo.
-    const CORNER_RADIUS = 8;
-    function drawSection(x, y, width, height, color) {
-      if (!opts.roundedCorners) {
-        page.drawRectangle({ x, y, width, height, color });
-        return;
-      }
-      const r = Math.min(CORNER_RADIUS, width / 2, height / 2);
-      const path = `M ${r},0 H ${width - r} A ${r},${r} 0 0 1 ${width},${r} V ${height - r} A ${r},${r} 0 0 1 ${width - r},${height} H ${r} A ${r},${r} 0 0 1 0,${height - r} V ${r} A ${r},${r} 0 0 1 ${r},0 Z`;
-      page.drawSvgPath(path, { x, y: y + height, color });
-    }
-
-    // Riduce progressivamente la dimensione del font finché il testo non entra nello spazio
-    // disponibile, senza scendere sotto una soglia minima di leggibilità.
-    function fitFontSize(text, font, maxSize, minSize, maxWidth) {
-      let size = maxSize;
-      while (size > minSize && font.widthOfTextAtSize(text, size) > maxWidth) size -= 0.5;
-      return size;
+    // Wrapper leggero: la vera logica di sezioni arrotondate/intestazione vive in pdfgen_shared.js,
+    // così i due motori PDF non possono più disallinearsi tra loro.
+    function drawSection(x, y, width, height, color, borderColor, borderWidth) {
+      return drawSectionShared(page, x, y, width, height, color, borderColor, borderWidth);
     }
 
     function drawEventHeader() {
-      const subtitleLines = (eventData.eventName || '').split('|').map(s => s.trim()).filter(Boolean);
-      const linesCount = subtitleLines.length || 1;
-      const dateLine = eventData.eventDate ? `Data: ${formatDateIt(eventData.eventDate)}` : '';
-      const title = 'CLASSIFICA ORIENTEERING';
-
-      // Elenco completo dei loghi presenti (OService + cliente + eventuali extra: agenzia, sponsor...).
-      const allLogos = [brandLogo, clientLogo, ...extraLogosEmbedded].filter(Boolean);
-
-      if (allLogos.length >= 3) {
-        // MOLTI loghi: vanno tutti su una riga in alto, testo sotto.
-        const LOGO_ROW_H = 42;
-        const textBlockH = 16 + linesCount * 17 + (dateLine ? 13 : 0);
-        const headerH = LOGO_ROW_H + 10 + textBlockH + 20;
-        const boxY = cursorY - headerH;
-        drawSection(MARGIN, boxY, CONTENT_W, headerH, NAVY);
-
-        const gap = 14;
-        const slotW = Math.min(72, (CONTENT_W - gap * (allLogos.length - 1)) / allLogos.length);
-        const totalW = slotW * allLogos.length + gap * (allLogos.length - 1);
-        let lx = MARGIN + (CONTENT_W - totalW) / 2;
-        const rowTopY = boxY + headerH - 12;
-        allLogos.forEach(img => {
-          const scale = Math.min(slotW / img.width, LOGO_ROW_H / img.height);
-          const w = img.width * scale, h = img.height * scale;
-          page.drawImage(img, { x: lx + (slotW - w) / 2, y: rowTopY - LOGO_ROW_H + (LOGO_ROW_H - h) / 2, width: w, height: h });
-          lx += slotW + gap;
-        });
-
-        let ty = rowTopY - LOGO_ROW_H - 16;
-        const titleSize1 = fitFontSize(title, fontBold, 16, 10, CONTENT_W);
-        page.drawText(title, { x: centerText(title, fontBold, titleSize1, MARGIN, CONTENT_W), y: ty, size: titleSize1, font: fontBold, color: TEXT_ON_BASE });
-        ty -= 21;
-        const subSize1 = subtitleLines.length ? Math.min(...subtitleLines.map(l => fitFontSize(l, fontBold, 12, 7, CONTENT_W))) : 12;
-        subtitleLines.forEach(line => {
-          page.drawText(line, { x: centerText(line, fontBold, subSize1, MARGIN, CONTENT_W), y: ty, size: subSize1, font: fontBold, color: TEXT_ON_BASE });
-          ty -= 17;
-        });
-        if (dateLine) {
-          page.drawText(dateLine, { x: centerText(dateLine, fontRegular, 9.5, MARGIN, CONTENT_W), y: ty, size: 9.5, font: fontRegular, color: TEXT_ON_BASE });
-        }
-        cursorY = boxY - 14;
-        return;
-      }
-
-      // 0, 1 o 2 loghi: layout classico ai due lati (invariato).
-      const dynamicHeaderH = 58 + linesCount * 17;
-      const headerH = Math.max(HEADER_H, dynamicHeaderH);
-
-      const boxY = cursorY - headerH;
-      drawSection(MARGIN, boxY, CONTENT_W, headerH, NAVY);
-
-      // Riserviamo una zona laterale fissa per ciascun logo presente, cosi' il testo centrale
-      // non rischia mai di sovrapporlo, indipendentemente da quanto e' largo il logo.
-      const LOGO_ZONE_W = 150;
-      // Spazio verticale tra il bordo superiore dell'header e il logo (il logo e' alto al massimo
-      // headerH - 2*LOGO_PAD, quindi il margine sopra/sotto vale LOGO_PAD). Riusiamo lo stesso
-      // valore come spazio orizzontale tra il logo e il testo centrale, su richiesta di Stefano.
-      const LOGO_PAD = 8;
-      const leftZone = brandLogo ? LOGO_ZONE_W : 0;
-      // Se manca il logo cliente, ripetiamo il logo OService anche a destra invece di lasciare vuoto.
-      const rightLogo = clientLogo || brandLogo;
-      const rightZone = rightLogo ? LOGO_ZONE_W : 0;
-
-      function drawLogoFit(img, zoneX, zoneW, maxH) {
-        if (!img) return;
-        const maxW = zoneW - 24;
-        const scale = Math.min(maxW / img.width, maxH / img.height);
-        const w = img.width * scale, h = img.height * scale;
-        const x = zoneX + (zoneW - w) / 2;
-        const y = boxY + (headerH - h) / 2;
-        page.drawImage(img, { x, y, width: w, height: h });
-      }
-      drawLogoFit(brandLogo, MARGIN, leftZone, headerH - LOGO_PAD * 2);
-      drawLogoFit(rightLogo, MARGIN + CONTENT_W - rightZone, rightZone, headerH - LOGO_PAD * 2);
-
-      const textGapLeft = leftZone ? LOGO_PAD : 0;
-      const textGapRight = rightZone ? LOGO_PAD : 0;
-      const textZoneX = MARGIN + leftZone + textGapLeft;
-      const textZoneW = CONTENT_W - leftZone - rightZone - textGapLeft - textGapRight;
-
-      let ty = boxY + headerH - 24;
-      const titleSize2 = fitFontSize(title, fontBold, 16, 10, textZoneW);
-      page.drawText(title, { x: centerText(title, fontBold, titleSize2, textZoneX, textZoneW), y: ty, size: titleSize2, font: fontBold, color: TEXT_ON_BASE });
-      ty -= 21;
-      const subSize2 = subtitleLines.length ? Math.min(...subtitleLines.map(l => fitFontSize(l, fontBold, 12, 7, textZoneW))) : 12;
-      subtitleLines.forEach(line => {
-        page.drawText(line, { x: centerText(line, fontBold, subSize2, textZoneX, textZoneW), y: ty, size: subSize2, font: fontBold, color: TEXT_ON_BASE });
-        ty -= 17;
+      cursorY = drawSharedEventHeader({
+        page, cursorY, MARGIN, CONTENT_W, HEADER_H, fontBold, fontRegular,
+        brandLogo, clientLogo, extraLogosEmbedded, palette, eventData,
+        title: 'CLASSIFICA ORIENTEERING', drawSection,
       });
-      if (dateLine) {
-        page.drawText(dateLine, { x: centerText(dateLine, fontRegular, 9.5, textZoneX, textZoneW), y: ty, size: 9.5, font: fontRegular, color: TEXT_ON_BASE });
-      }
-      cursorY = boxY - 14;
-    }
-
-    function formatDateIt(iso) {
-      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-      if (!m) return iso;
-      return `${m[3]}-${m[2]}-${m[1]}`; // GG-MM-AAAA
     }
 
     function drawCategoryBar(className, continuation) {
@@ -673,9 +695,9 @@ function buildClassificaPdf(PDFLib, eventData, options) {
   })();
 }
 
-// Genera il PDF degli intertempi: intestazione identica alla classifica (loghi, colore, a capo con "|"),
-// poi una scheda compatta per atleta, quante più per pagina possibile senza scendere sotto una soglia
-// di leggibilità.
+// Genera il PDF degli intertempi. Usa il codice condiviso in pdfgen_shared.js per palette,
+// intestazione, formato data e restringimento font: identico alla classifica per costruzione,
+// non per copia-incolla mantenuta a mano.
 
 function buildSplitsPdf(PDFLib, eventData, options) {
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
@@ -689,35 +711,13 @@ function buildSplitsPdf(PDFLib, eventData, options) {
     roundedCorners: false,
   }, options);
 
-  function hexToRgb01(hex) {
-    hex = (hex || '#1A3A6B').replace('#', '');
-    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
-    const r = parseInt(hex.substring(0, 2), 16) / 255;
-    const g = parseInt(hex.substring(2, 4), 16) / 255;
-    const b = parseInt(hex.substring(4, 6), 16) / 255;
-    return { r: isNaN(r) ? 0.1 : r, g: isNaN(g) ? 0.23 : g, b: isNaN(b) ? 0.42 : b };
-  }
-  function mix(c1, c2, amount) { return { r: c1.r + (c2.r - c1.r) * amount, g: c1.g + (c2.g - c1.g) * amount, b: c1.b + (c2.b - c1.b) * amount }; }
-  function luminance(c) { return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; }
-  function toRgb(c) { return rgb(c.r, c.g, c.b); }
-
-  const WHITE01 = { r: 1, g: 1, b: 1 }, BLACK01 = { r: 0, g: 0, b: 0 };
-  const base01 = hexToRgb01(opts.baseColorHex);
-  const midblue01 = mix(base01, WHITE01, 0.32);
-  const textOnBase01 = luminance(base01) > 0.55 ? { r: 0.12, g: 0.12, b: 0.14 } : WHITE01;
-  const textOnMidblue01 = luminance(midblue01) > 0.55 ? { r: 0.12, g: 0.12, b: 0.14 } : WHITE01;
-
-  const NAVY = toRgb(base01);
-  const MIDBLUE = toRgb(midblue01);
+  const palette = computeSharedPalette(rgb, opts.baseColorHex);
+  const { NAVY, MIDBLUE, WHITE, TEXT, MUTED, TEXT_ON_BASE, TEXT_ON_MIDBLUE } = palette;
+  const drawSectionShared = makeDrawSection(opts.roundedCorners);
   const CARD_BORDER = rgb(0.85, 0.85, 0.88);
-  const WHITE = rgb(1, 1, 1);
-  const TEXT = rgb(0.12, 0.12, 0.14);
-  const MUTED = rgb(0.5, 0.5, 0.53);
   const MISSING_COLOR = rgb(0.75, 0.25, 0.25);
   const ADDITIONAL_COLOR = rgb(0.55, 0.45, 0.1);
   const FINISH_COLOR = rgb(0.13, 0.45, 0.25);
-  const TEXT_ON_BASE = toRgb(textOnBase01);
-  const TEXT_ON_MIDBLUE = toRgb(textOnMidblue01);
 
   return (async () => {
     const pdfDoc = await PDFDocument.create();
@@ -752,122 +752,20 @@ function buildSplitsPdf(PDFLib, eventData, options) {
       return sign + (h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`);
     }
     const STATUS_LABELS = { OK: 'OK', MP: 'Punzonatura Errata', PM: 'Punzonatura Mancante', DSQ: 'Squalificato', DNS: 'Non partito', DNF: 'Non arrivato', RIT_M: 'Ritirato', RIT_F: 'Ritirata', FC: 'Fuori classifica', ALTRO: 'Da verificare' };
-    function centerText(text, font, size, boxX, boxW) {
-      const w = font.widthOfTextAtSize(text, size);
-      return boxX + (boxW - w) / 2;
-    }
-
-    // Stessa funzione usata nella classifica: rettangolo con angoli arrotondati opzionali.
-    const CORNER_RADIUS = 8;
-    function drawSection(x, y, width, height, fillColor, borderColor, borderWidth) {
-      if (!opts.roundedCorners) {
-        page.drawRectangle({ x, y, width, height, color: fillColor, borderColor, borderWidth });
-        return;
-      }
-      const r = Math.min(CORNER_RADIUS, width / 2, height / 2);
-      const path = `M ${r},0 H ${width - r} A ${r},${r} 0 0 1 ${width},${r} V ${height - r} A ${r},${r} 0 0 1 ${width - r},${height} H ${r} A ${r},${r} 0 0 1 0,${height - r} V ${r} A ${r},${r} 0 0 1 ${r},0 Z`;
-      page.drawSvgPath(path, { x, y: y + height, color: fillColor, borderColor, borderWidth });
-    }
-    function formatDateIt(iso) {
-      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-      if (!m) return iso;
-      return `${m[3]}-${m[2]}-${m[1]}`; // GG-MM-AAAA
-    }
-    function fitFontSize(text, font, maxSize, minSize, maxWidth) {
-      let size = maxSize;
-      while (size > minSize && font.widthOfTextAtSize(text, size) > maxWidth) size -= 0.5;
-      return size;
-    }
 
     let page, cursorY;
     function newPage() { page = pdfDoc.addPage([PAGE_W, PAGE_H]); cursorY = PAGE_H - MARGIN; return page; }
 
+    function drawSection(x, y, width, height, fillColor, borderColor, borderWidth) {
+      return drawSectionShared(page, x, y, width, height, fillColor, borderColor, borderWidth);
+    }
+
     function drawEventHeader() {
-      const subtitleLines = (eventData.eventName || '').split('|').map(s => s.trim()).filter(Boolean);
-      const linesCount = subtitleLines.length || 1;
-      const dateLine = eventData.eventDate ? `Data: ${formatDateIt(eventData.eventDate)}` : '';
-      const title = 'INTERTEMPI ORIENTEERING';
-
-      const allLogos = [brandLogo, clientLogo, ...extraLogosEmbedded].filter(Boolean);
-
-      if (allLogos.length >= 3) {
-        const LOGO_ROW_H = 42;
-        const textBlockH = 16 + linesCount * 17 + (dateLine ? 13 : 0);
-        const headerH = LOGO_ROW_H + 10 + textBlockH + 20;
-        const boxY = cursorY - headerH;
-        drawSection(MARGIN, boxY, CONTENT_W, headerH, NAVY);
-
-        const gap = 14;
-        const slotW = Math.min(72, (CONTENT_W - gap * (allLogos.length - 1)) / allLogos.length);
-        const totalW = slotW * allLogos.length + gap * (allLogos.length - 1);
-        let lx = MARGIN + (CONTENT_W - totalW) / 2;
-        const rowTopY = boxY + headerH - 12;
-        allLogos.forEach(img => {
-          const scale = Math.min(slotW / img.width, LOGO_ROW_H / img.height);
-          const w = img.width * scale, h = img.height * scale;
-          page.drawImage(img, { x: lx + (slotW - w) / 2, y: rowTopY - LOGO_ROW_H + (LOGO_ROW_H - h) / 2, width: w, height: h });
-          lx += slotW + gap;
-        });
-
-        let ty = rowTopY - LOGO_ROW_H - 16;
-        const titleSize1 = fitFontSize(title, fontBold, 16, 10, CONTENT_W);
-        page.drawText(title, { x: centerText(title, fontBold, titleSize1, MARGIN, CONTENT_W), y: ty, size: titleSize1, font: fontBold, color: TEXT_ON_BASE });
-        ty -= 21;
-        const subSize1 = subtitleLines.length ? Math.min(...subtitleLines.map(l => fitFontSize(l, fontBold, 12, 7, CONTENT_W))) : 12;
-        subtitleLines.forEach(line => {
-          page.drawText(line, { x: centerText(line, fontBold, subSize1, MARGIN, CONTENT_W), y: ty, size: subSize1, font: fontBold, color: TEXT_ON_BASE });
-          ty -= 17;
-        });
-        if (dateLine) {
-          page.drawText(dateLine, { x: centerText(dateLine, fontRegular, 9.5, MARGIN, CONTENT_W), y: ty, size: 9.5, font: fontRegular, color: TEXT_ON_BASE });
-        }
-        cursorY = boxY - 14;
-        return;
-      }
-
-      const dynamicHeaderH = 58 + linesCount * 17;
-      const headerH = Math.max(HEADER_H, dynamicHeaderH);
-
-      const boxY = cursorY - headerH;
-      drawSection(MARGIN, boxY, CONTENT_W, headerH, NAVY);
-
-      const LOGO_ZONE_W = 150;
-      const LOGO_PAD = 8;
-      const leftZone = brandLogo ? LOGO_ZONE_W : 0;
-      // Se manca il logo cliente, ripetiamo il logo OService anche a destra invece di lasciare vuoto.
-      const rightLogo = clientLogo || brandLogo;
-      const rightZone = rightLogo ? LOGO_ZONE_W : 0;
-
-      function drawLogoFit(img, zoneX, zoneW, maxH) {
-        if (!img) return;
-        const maxW = zoneW - 24;
-        const scale = Math.min(maxW / img.width, maxH / img.height);
-        const w = img.width * scale, h = img.height * scale;
-        const x = zoneX + (zoneW - w) / 2;
-        const y = boxY + (headerH - h) / 2;
-        page.drawImage(img, { x, y, width: w, height: h });
-      }
-      drawLogoFit(brandLogo, MARGIN, leftZone, headerH - LOGO_PAD * 2);
-      drawLogoFit(rightLogo, MARGIN + CONTENT_W - rightZone, rightZone, headerH - LOGO_PAD * 2);
-
-      const textGapLeft = leftZone ? LOGO_PAD : 0;
-      const textGapRight = rightZone ? LOGO_PAD : 0;
-      const textZoneX = MARGIN + leftZone + textGapLeft;
-      const textZoneW = CONTENT_W - leftZone - rightZone - textGapLeft - textGapRight;
-
-      let ty = boxY + headerH - 24;
-      const titleSize2 = fitFontSize(title, fontBold, 16, 10, textZoneW);
-      page.drawText(title, { x: centerText(title, fontBold, titleSize2, textZoneX, textZoneW), y: ty, size: titleSize2, font: fontBold, color: TEXT_ON_BASE });
-      ty -= 21;
-      const subSize2 = subtitleLines.length ? Math.min(...subtitleLines.map(l => fitFontSize(l, fontBold, 12, 7, textZoneW))) : 12;
-      subtitleLines.forEach(line => {
-        page.drawText(line, { x: centerText(line, fontBold, subSize2, textZoneX, textZoneW), y: ty, size: subSize2, font: fontBold, color: TEXT_ON_BASE });
-        ty -= 17;
+      cursorY = drawSharedEventHeader({
+        page, cursorY, MARGIN, CONTENT_W, HEADER_H, fontBold, fontRegular,
+        brandLogo, clientLogo, extraLogosEmbedded, palette, eventData,
+        title: 'INTERTEMPI ORIENTEERING', drawSection,
       });
-      if (dateLine) {
-        page.drawText(dateLine, { x: centerText(dateLine, fontRegular, 9.5, textZoneX, textZoneW), y: ty, size: 9.5, font: fontRegular, color: TEXT_ON_BASE });
-      }
-      cursorY = boxY - 14;
     }
 
     function drawCategoryBar(className, continuation) {
@@ -982,7 +880,7 @@ function render(){
   document.getElementById('editorArea').hidden = false;
   document.getElementById('eventRow').hidden = false;
   document.getElementById('eventInfo').value = eventData.eventName;
-  document.getElementById('eventDate').value = eventData.eventDate || '';
+  document.getElementById('eventDate').value = eventData.eventDate ? formatDateIt(eventData.eventDate) : '';
   document.getElementById('eventInfoHint').hidden = false;
   const archSaveBtn = document.getElementById('saveToArchiveBtn');
   if (archSaveBtn) archSaveBtn.hidden = !currentClientId;
@@ -1130,7 +1028,29 @@ document.getElementById('fileInput').addEventListener('change', async (e) => {
 });
 
 document.getElementById('eventInfo').addEventListener('change', e => { if (eventData){ eventData.eventName = e.target.value; saveToStorage(); } });
-document.getElementById('eventDate').addEventListener('change', e => { if (eventData){ eventData.eventDate = e.target.value; saveToStorage(); } });
+
+// Converte GG-MM-AAAA (quello che l'utente vede e scrive) in AAAA-MM-GG (quello che il programma
+// usa internamente per calcoli, ordinamento in archivio, e per la conversione inversa nel PDF).
+function itDateToIso(str) {
+  const s = (str || '').trim();
+  if (!s) return '';
+  const m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(s);
+  if (!m) return null;
+  const dd = parseInt(m[1], 10), mm = parseInt(m[2], 10), yyyy = parseInt(m[3], 10);
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  return `${String(yyyy).padStart(4, '0')}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+document.getElementById('eventDate').addEventListener('change', e => {
+  if (!eventData) return;
+  const iso = itDateToIso(e.target.value);
+  if (iso === null) {
+    alert('Data non valida. Scrivila come GG-MM-AAAA, ad esempio 03-02-2025.');
+    e.target.value = eventData.eventDate ? formatDateIt(eventData.eventDate) : '';
+    return;
+  }
+  eventData.eventDate = iso;
+  saveToStorage();
+});
 
 const dropzone = document.getElementById('dropzone');
 ['dragenter','dragover'].forEach(evt => dropzone.addEventListener(evt, e => {
@@ -1385,7 +1305,7 @@ async function refreshEventsList() {
   container.innerHTML = '<table><thead><tr><th>Gara</th><th>Data</th><th>Salvata il</th><th class="actions-col">Azioni</th></tr></thead><tbody>' +
     events.map(ev => `<tr data-id="${ev.id}">
       <td>${escapeHtml((ev.eventName || '').replace(/\|/g, ' — '))}</td>
-      <td>${escapeHtml(ev.eventDate || '')}</td>
+      <td>${escapeHtml(ev.eventDate ? formatDateIt(ev.eventDate) : '')}</td>
       <td>${new Date(ev.savedAt).toLocaleString('it-IT')}</td>
       <td class="actions-col"><button data-action="open" class="swap-btn">Apri</button> <button data-action="del" class="swap-btn" style="color:var(--danger);">Elim.</button></td>
     </tr>`).join('') + '</tbody></table>';
