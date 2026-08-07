@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Classifiche — OService PDF Suite (prototipo)</title>
+<script src="./lib/pdf-lib-bundle.js"></script>
+<style>
+  :root{
+    --primary:#6b46c1;       /* placeholder: colore provvisorio del modulo, da allineare alla palette reale della Suite */
+    --primary-dark:#553399;
+    --bg:#f7f6fb;
+    --card:#ffffff;
+    --border:#ddd6ee;
+    --text:#2a2438;
+    --muted:#8a80a3;
+    --ok:#2e7d32;
+    --warn:#b45309;
+    --danger:#b91c1c;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:20px;}
+  h1{color:var(--primary-dark);font-size:1.4rem;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:.85rem;margin-bottom:18px;}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+  input[type=file]{font-size:.9rem;}
+  label.toggle{display:flex;align-items:center;gap:6px;font-size:.85rem;color:var(--text);cursor:pointer;}
+  .dropzone{border:2px dashed var(--border);border-radius:10px;padding:14px;text-align:center;color:var(--muted);font-size:.85rem;transition:background .15s,border-color .15s;}
+  .dropzone.dragover{background:#f1edfb;border-color:var(--primary);color:var(--primary-dark);}
+  #eventInfo{font-weight:600;color:var(--primary-dark);border:1px solid transparent;border-radius:5px;padding:3px 6px;background:transparent;font-size:1rem;font-family:inherit;}
+  #eventInfo:hover{border-color:var(--border);}
+  #eventInfo:focus{border-color:var(--primary);background:#fff;outline:none;}
+  #eventDate{color:var(--muted);font-size:.85rem;border:1px solid transparent;border-radius:5px;padding:3px 6px;font-family:inherit;background:transparent;}
+  #eventDate:hover{border-color:var(--border);}
+  #eventDate:focus{border-color:var(--primary);background:#fff;outline:none;}
+  .warnings{background:#fff7ed;border:1px solid #fbbf24;color:var(--warn);border-radius:8px;padding:10px 14px;font-size:.85rem;margin-top:10px;}
+  .tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .tab-btn{padding:8px 16px;border-radius:20px;border:1px solid var(--border);background:var(--card);cursor:pointer;font-size:.9rem;color:var(--text);}
+  .tab-btn.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+  table{width:100%;border-collapse:collapse;font-size:.88rem;}
+  th{text-align:left;background:#f1edfb;color:var(--primary-dark);padding:8px 6px;position:sticky;top:0;font-weight:600;}
+  td{padding:5px 6px;border-bottom:1px solid var(--border);}
+  td input, td select{width:100%;border:1px solid transparent;background:transparent;padding:4px;border-radius:5px;font-size:.88rem;font-family:inherit;color:var(--text);}
+  td input:hover, td select:hover{border-color:var(--border);}
+  td input:focus, td select:focus{border-color:var(--primary);background:#fff;outline:none;}
+  .pos-col{width:60px;}
+  .f-pos{-moz-appearance:textfield;}
+  .f-pos::-webkit-outer-spin-button, .f-pos::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .time-col{width:75px;}
+  .behind-col{width:75px;color:var(--muted);}
+  .status-col{width:185px;}
+  .actions-col{width:70px;text-align:center;}
+  .swap-btn{background:none;border:1px solid var(--border);border-radius:5px;cursor:pointer;padding:3px 6px;font-size:.8rem;}
+  .swap-btn:hover{background:#f1edfb;}
+  .manual-flag{color:var(--primary);font-size:.7rem;font-weight:700;margin-left:3px;}
+  .reset-pos{background:none;border:none;color:var(--muted);cursor:pointer;font-size:.75rem;text-decoration:underline;padding:0;margin-left:3px;}
+  .status-OK{}
+  .status-MP td, .status-DSQ td, .status-DNS td, .status-DNF td, .status-FC td, .status-ALTRO td{color:var(--muted);}
+  .section-title{margin:22px 0 8px;font-size:.95rem;color:var(--primary-dark);font-weight:600;}
+  .empty{color:var(--muted);font-style:italic;font-size:.85rem;padding:10px 0;}
+  .save-status{font-size:.78rem;color:var(--muted);margin-left:auto;}
+  .pdf-panel{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);}
+  .pdf-group{display:flex;flex-direction:column;gap:6px;}
+  .pdf-group h4{margin:0 0 2px;font-size:.8rem;color:var(--primary-dark);text-transform:uppercase;letter-spacing:.03em;}
+  .pdf-group label{font-size:.85rem;display:flex;align-items:center;gap:6px;cursor:pointer;}
+  .btn{background:var(--primary);color:#fff;border:none;border-radius:7px;padding:9px 18px;font-size:.88rem;cursor:pointer;}
+  .btn:hover{background:var(--primary-dark);}
+  .btn.secondary{background:#fff;color:var(--primary);border:1px solid var(--primary);}
+  .logo-preview{width:44px;height:44px;object-fit:contain;border:1px solid var(--border);border-radius:6px;display:none;}
+</style>
+</head>
+<body>
+
+<h1>Classifiche — prototipo</h1>
+<div class="sub">Import IOF XML v3.0 (export SI-Droid Event) · editor puntuale · salvataggio automatico locale</div>
+
+<div class="panel">
+  <div class="row">
+    <input type="file" id="fileInput" accept=".xml">
+    <label class="toggle"><input type="checkbox" id="invertToggle" checked> Inverti Nome/Cognome all'importazione (SI-Droid li esporta scambiati)</label>
+    <span class="save-status" id="saveStatus"></span>
+  </div>
+  <div class="dropzone" id="dropzone">Oppure trascina qui il file XML</div>
+  <div class="row" style="margin-top:10px;" id="eventRow" hidden>
+    <input id="eventInfo" value="">
+    <input id="eventDate" value="" placeholder="AAAA-MM-GG">
+  </div>
+  <div class="sub" id="eventInfoHint" hidden>Suggerimento: usa il simbolo | nel nome per andare a capo nel PDF (es. "Virgilio|Seconde")</div>
+  <div id="warningsBox"></div>
+</div>
+
+<div class="panel" id="archivePanel">
+  <div class="row" style="justify-content:space-between;flex-wrap:wrap;">
+    <div class="row">
+      <label style="font-size:.85rem;">Cliente:
+        <select id="clientSelect" style="margin-left:6px;padding:4px;border-radius:5px;border:1px solid var(--border);"><option value="">— Nessuno —</option></select>
+      </label>
+      <button type="button" class="btn secondary" id="newClientBtn" style="font-size:.8rem;padding:6px 10px;">+ Nuovo cliente</button>
+      <button type="button" class="btn secondary" id="renameClientBtn" style="font-size:.8rem;padding:6px 10px;" hidden>Rinomina</button>
+      <button type="button" class="btn secondary" id="deleteClientBtn" style="font-size:.8rem;padding:6px 10px;color:var(--danger);border-color:var(--danger);" hidden>Elimina cliente</button>
+    </div>
+    <div class="row">
+      <button type="button" class="btn secondary" id="exportArchiveBtn" style="font-size:.78rem;padding:5px 10px;">⭳ Backup archivio</button>
+      <label class="btn secondary" style="font-size:.78rem;padding:5px 10px;cursor:pointer;">⭱ Ripristina backup<input type="file" id="importArchiveInput" accept=".json" style="display:none;"></label>
+    </div>
+  </div>
+  <div class="row" id="clientLogoRow" hidden style="margin-top:10px;">
+    <span style="font-size:.8rem;color:var(--muted);">Logo di questo cliente (salvato, riusato automaticamente in ogni sua classifica):</span>
+    <img id="archiveClientLogoPreview" class="logo-preview">
+    <label class="btn secondary" style="font-size:.78rem;padding:4px 8px;cursor:pointer;">Cambia<input type="file" id="archiveClientLogoInput" accept="image/png,image/jpeg" style="display:none;"></label>
+  </div>
+  <div id="clientEventsList" style="margin-top:10px;"></div>
+  <button type="button" class="btn" id="saveToArchiveBtn" style="margin-top:10px;" hidden>💾 Salva questa classifica nell'archivio del cliente</button>
+</div>
+
+<div id="editorArea" hidden>
+  <div class="tabs" id="tabsBar"></div>
+  <div class="panel">
+    <div id="mainTableWrap"></div>
+    <div class="section-title">Fuori classifica</div>
+    <div id="othersTableWrap"></div>
+
+    <div class="pdf-panel">
+      <div class="pdf-group">
+        <h4>Colonne nel PDF</h4>
+        <label><input type="checkbox" id="colPos" checked> Posizione</label>
+        <label><input type="checkbox" id="colNome" checked disabled> Nome (Cognome+Nome uniti)</label>
+        <label><input type="checkbox" id="colSocieta" checked> Società/Classe</label>
+        <select id="societaLabelPreset" style="font-size:.8rem;margin-left:22px;">
+          <option value="Società/Classe">Etichetta: Società/Classe</option>
+          <option value="Azienda">Etichetta: Azienda</option>
+          <option value="Classe" selected>Etichetta: Classe</option>
+          <option value="Scuola">Etichetta: Scuola</option>
+          <option value="__custom__">Etichetta: personalizzata…</option>
+        </select>
+        <input id="societaLabelCustom" placeholder="Testo personalizzato" style="display:none;margin-left:22px;width:160px;">
+        <label><input type="checkbox" id="colTempo" checked> Tempo</label>
+        <label><input type="checkbox" id="colDistacco"> Distacco</label>
+      </div>
+      <div class="pdf-group">
+        <h4>Ordine nome</h4>
+        <label><input type="radio" name="nameOrder" value="cognome-nome" checked> Cognome Nome</label>
+        <label><input type="radio" name="nameOrder" value="nome-cognome"> Nome Cognome</label>
+      </div>
+      <div class="pdf-group">
+        <h4>Impaginazione</h4>
+        <label><input type="checkbox" id="allowMultiPage" checked> Se non entra, continua su più pagine</label>
+        <label style="color:var(--muted);font-size:.78rem;">(se disattivato: il testo si rimpicciolisce quanto serve per stare comunque tutto su una pagina — nessun atleta viene mai tagliato)</label>
+        <label style="margin-top:6px;"><input type="checkbox" id="roundedCorners" checked> Angoli arrotondati (header, barre, tabella)</label>
+      </div>
+      <div class="pdf-group">
+        <h4>Colore classifica</h4>
+        <label style="flex-direction:column;align-items:flex-start;gap:4px;">
+          <span>Colore base (header, barre, tabella)</span>
+          <input type="color" id="baseColorPicker" value="#1A3A6B" style="width:60px;height:32px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+        </label>
+        <span style="font-size:.78rem;color:var(--muted);max-width:180px;">Le altre tinte (barra categoria, righe alternate) e il colore del testo si adattano da sole per restare leggibili.</span>
+      </div>
+      <div class="pdf-group">
+        <h4>Logo OService (tuo, salvato una volta)</h4>
+        <label><input type="file" id="brandLogoInput" accept="image/png,image/jpeg" style="width:auto;"></label>
+        <img id="brandLogoPreview" class="logo-preview">
+      </div>
+      <div class="pdf-group">
+        <h4>Logo cliente (scuola/azienda)</h4>
+        <label><input type="file" id="logoInput" accept="image/png,image/jpeg" style="width:auto;"></label>
+        <img id="logoPreview" class="logo-preview">
+      </div>
+      <div class="pdf-group">
+        <h4>Altri loghi (agenzia, sponsor...)</h4>
+        <div id="extraLogosList"></div>
+        <button type="button" class="btn secondary" id="addExtraLogoBtn" style="font-size:.78rem;padding:5px 10px;margin-top:4px;">+ Aggiungi logo</button>
+        <span style="font-size:.75rem;color:var(--muted);max-width:180px;">Da 3 loghi in su vanno automaticamente in riga in alto, con titolo e data sotto.</span>
+      </div>
+      <div class="pdf-group" style="justify-content:flex-end;">
+        <h4>&nbsp;</h4>
+        <button class="btn" id="exportPdfBtn">Esporta PDF classifica</button>
+        <button class="btn secondary" id="exportSplitsBtn" style="margin-top:8px;">Esporta PDF intertempi</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============ PARSER (identico al modulo testato in Node) ============ */
+const STATUS_MAP = {
+  'OK': 'OK', 'MissingPunch': 'MP', 'Disqualified': 'DSQ', 'DidNotStart': 'DNS',
+  'DidNotFinish': 'DNF', 'OverTime': 'DNF', 'NotCompeting': 'FC', 'SportingWithdrawal': 'DNF',
+};
+const STATUS_LABELS = { OK:'OK', MP:'Punzonatura Errata', PM:'Punzonatura Mancante', DSQ:'Squalificato', DNS:'Non partito', DNF:'Non arrivato', RIT_M:'Ritirato', RIT_F:'Ritirata', FC:'Fuori classifica', ALTRO:'Da verificare' };
+
+function nsChildren(el, tag){ return Array.from(el.children).filter(c => c.localName === tag); }
+function nsChild(el, tag){ const a = nsChildren(el, tag); return a.length ? a[0] : null; }
+function txt(el, tag, fb=''){ const n = nsChild(el, tag); return n ? n.textContent.trim() : fb; }
+
+function secondsToClock(sec){
+  if (sec === null || sec === undefined || isNaN(sec)) return '';
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = Math.floor(sec%60);
+  const mm = String(m).padStart(2,'0'), ss = String(s).padStart(2,'0');
+  return h>0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+function clockToSeconds(str){
+  if (!str) return null;
+  const parts = str.trim().split(':').map(p=>parseInt(p,10));
+  if (parts.some(isNaN)) return null;
+  if (parts.length===3) return parts[0]*3600+parts[1]*60+parts[2];
+  if (parts.length===2) return parts[0]*60+parts[1];
+  if (parts.length===1) return parts[0];
+  return null;
+}
+let _uid = 0;
+function uid(){ return 'r'+(++_uid); }
+
+function parseIofXml(xmlText, invert){
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('File XML non valido o corrotto.');
+  const root = doc.documentElement;
+  if (root.localName !== 'ResultList') throw new Error('Il file non contiene <ResultList>: non sembra un export classifiche IOF XML.');
+
+  const eventEl = nsChild(root, 'Event');
+  const eventName = eventEl ? txt(eventEl,'Name','Gara senza nome') : 'Gara senza nome';
+  let eventDate = '';
+  if (eventEl){ const st = nsChild(eventEl,'StartTime'); if (st) eventDate = txt(st,'Date',''); }
+
+  const classResults = nsChildren(root, 'ClassResult');
+  if (!classResults.length) throw new Error('Nessuna categoria (ClassResult) trovata nel file.');
+
+  const warnings = [];
+  const classes = classResults.map(cr => {
+    const classEl = nsChild(cr,'Class');
+    const className = classEl ? txt(classEl,'Name','Categoria senza nome') : 'Categoria senza nome';
+    const results = nsChildren(cr,'PersonResult').map(pr => {
+      const personEl = nsChild(pr,'Person');
+      const nameEl = personEl ? nsChild(personEl,'Name') : null;
+      let family = nameEl ? txt(nameEl,'Family','') : '';
+      let given = nameEl ? txt(nameEl,'Given','') : '';
+      if (invert) { const tmp = family; family = given; given = tmp; }
+      const orgEl = nsChild(pr,'Organisation');
+      const org = orgEl ? txt(orgEl,'Name','') : '';
+      const resultEl = nsChild(pr,'Result');
+      let timeSec = null, status = 'ALTRO', rawStatus = '', splits = [], controlCard = '';
+      if (resultEl){
+        const timeTxt = txt(resultEl,'Time','');
+        timeSec = timeTxt ? parseFloat(timeTxt) : null;
+        rawStatus = txt(resultEl,'Status','OK');
+        status = STATUS_MAP[rawStatus] || 'ALTRO';
+        if (status === 'ALTRO') warnings.push(`Status non riconosciuto "${rawStatus}" per ${given} ${family} — verificare manualmente.`);
+        controlCard = txt(resultEl,'ControlCard','');
+        splits = nsChildren(resultEl,'SplitTime').map(se => {
+          const code = txt(se,'ControlCode','');
+          const tTxt = txt(se,'Time','');
+          return { code, time: tTxt ? parseFloat(tTxt) : null, splitStatus: se.getAttribute('status') || 'OK' };
+        });
+      } else {
+        warnings.push(`Nessun risultato per ${given} ${family}.`);
+      }
+      return { id: uid(), family, given, org, timeSec: (status==='OK') ? timeSec : null, status, rawStatus, manualPosition: null, computedPosition: null, timeBehindSec: 0, splits, controlCard };
+    });
+    return { name: className, results };
+  });
+
+  return { eventName, eventDate, classes, warnings };
+}
+
+function recomputeClass(cls){
+  const ok = cls.results.filter(r=>r.status==='OK');
+  const others = cls.results.filter(r=>r.status!=='OK');
+  const manual = ok.filter(r=>r.manualPosition!==null).sort((a,b)=>a.manualPosition-b.manualPosition);
+  const auto = ok.filter(r=>r.manualPosition===null).sort((a,b)=>(a.timeSec??Infinity)-(b.timeSec??Infinity));
+  const total = manual.length + auto.length;
+  const finalOrder = new Array(total).fill(null);
+  manual.forEach(r=>{ const idx = Math.min(Math.max(r.manualPosition-1,0), total-1); finalOrder[idx]=r; });
+  let ai=0;
+  for(let i=0;i<total;i++){ if(finalOrder[i]===null) finalOrder[i]=auto[ai++]; }
+  const leaderTime = finalOrder.length ? finalOrder[0].timeSec : null;
+  finalOrder.forEach((r,i)=>{ r.computedPosition=i+1; r.timeBehindSec=(leaderTime!==null && r.timeSec!==null)?(r.timeSec-leaderTime):0; });
+  cls.results = [...finalOrder, ...others];
+}
+
+// Genera il PDF della classifica. Isomorfo: riceve l'oggetto PDFLib (dal pacchetto npm in Node,
+// o dalla variabile globale window.PDFLib nel browser via CDN) cosi' lo stesso codice si testa
+// in Node e poi si incolla nell'HTML senza riscriverlo.
+
+// Genera il PDF della classifica, stile brandizzato OService (colori campionati dal PDF di riferimento fornito da Stefano)
+
+// Genera il PDF della classifica, stile brandizzato OService (colori campionati dal PDF di riferimento fornito da Stefano)
+
+// Genera il PDF della classifica, stile brandizzato OService (colori campionati dal PDF di riferimento fornito da Stefano)
+
+// Genera il PDF della classifica, stile brandizzato OService (colori campionati dal PDF di riferimento fornito da Stefano)
+
+// Genera il PDF della classifica, stile brandizzato OService (colori campionati dal PDF di riferimento fornito da Stefano)
+
+// Genera il PDF della classifica, stile brandizzato OService (colori campionati dal PDF di riferimento fornito da Stefano)
+
+// Genera il PDF della classifica, stile brandizzato OService (colori campionati dal PDF di riferimento fornito da Stefano)
+
+function buildClassificaPdf(PDFLib, eventData, options) {
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+
+  const opts = Object.assign({
+    columns: { pos: true, nome: true, societa: true, tempo: true, distacco: true },
+    nameOrder: 'cognome-nome',
+    allowMultiPage: true,
+    brandLogoBytes: null, brandLogoType: null, // logo OService, fisso, a sinistra
+    clientLogoBytes: null, clientLogoType: null, // logo cliente, a destra
+    extraLogos: [], // loghi aggiuntivi (agenzia, sponsor...): array di {bytes, type}
+    baseColorHex: '#1A3A6B',
+    roundedCorners: false,
+  }, options);
+
+  // Palette: tutta derivata da un unico colore base scelto dall'utente, cosi' resta coerente
+  // e leggibile qualunque tinta si scelga (calcolo automatico bianco/scuro per il testo).
+  function hexToRgb01(hex) {
+    hex = (hex || '#1A3A6B').replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+    const r = parseInt(hex.substring(0, 2), 16) / 255;
+    const g = parseInt(hex.substring(2, 4), 16) / 255;
+    const b = parseInt(hex.substring(4, 6), 16) / 255;
+    return { r: isNaN(r) ? 0.1 : r, g: isNaN(g) ? 0.23 : g, b: isNaN(b) ? 0.42 : b };
+  }
+  function mix(c1, c2, amount) {
+    return { r: c1.r + (c2.r - c1.r) * amount, g: c1.g + (c2.g - c1.g) * amount, b: c1.b + (c2.b - c1.b) * amount };
+  }
+  function luminance(c) { return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; }
+  function toRgb(c) { return rgb(c.r, c.g, c.b); }
+
+  const WHITE01 = { r: 1, g: 1, b: 1 }, BLACK01 = { r: 0, g: 0, b: 0 };
+  const base01 = hexToRgb01(opts.baseColorHex);
+  const midblue01 = mix(base01, WHITE01, 0.32);
+  const zebra01 = mix(base01, WHITE01, 0.90);
+  const textOnBase01 = luminance(base01) > 0.55 ? { r: 0.12, g: 0.12, b: 0.14 } : WHITE01;
+  const textOnMidblue01 = luminance(midblue01) > 0.55 ? { r: 0.12, g: 0.12, b: 0.14 } : WHITE01;
+  const accentOnWhite01 = luminance(base01) > 0.65 ? mix(base01, BLACK01, 0.45) : base01;
+
+  const NAVY = toRgb(base01);
+  const MIDBLUE = toRgb(midblue01);
+  const GOLD = rgb(255/255, 214/255, 0/255);
+  const SILVER = rgb(191/255, 191/255, 191/255);
+  const BRONZE = rgb(205/255, 126/255, 49/255);
+  const ZEBRA = toRgb(zebra01);
+  const WHITE = rgb(1, 1, 1);
+  const TEXT = rgb(0.12, 0.12, 0.14);
+  const MUTED = rgb(0.55, 0.55, 0.58);
+  const TEXT_ON_BASE = toRgb(textOnBase01);
+  const TEXT_ON_MIDBLUE = toRgb(textOnMidblue01);
+  const ACCENT_ON_WHITE = toRgb(accentOnWhite01);
+
+  return (async () => {
+    const pdfDoc = await PDFDocument.create();
+    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    async function embedLogo(bytes, type) {
+      if (!bytes) return null;
+      return type === 'jpg' ? pdfDoc.embedJpg(bytes) : pdfDoc.embedPng(bytes);
+    }
+    const brandLogo = await embedLogo(opts.brandLogoBytes, opts.brandLogoType);
+    const clientLogo = await embedLogo(opts.clientLogoBytes, opts.clientLogoType);
+    const extraLogosEmbedded = [];
+    for (const l of (opts.extraLogos || [])) {
+      const img = await embedLogo(l.bytes, l.type);
+      if (img) extraLogosEmbedded.push(img);
+    }
+
+    const PAGE_W = 595.28, PAGE_H = 841.89;
+    const MARGIN = 36;
+    const CONTENT_W = PAGE_W - MARGIN * 2;
+    const HEADER_H = 92;
+    const CAT_BAR_H = 26;
+    const TABLE_HEAD_H = 22;
+
+    function nameOf(r) {
+      return opts.nameOrder === 'nome-cognome' ? `${r.given} ${r.family}` : `${r.family} ${r.given}`;
+    }
+    function secondsToClock(sec) {
+      if (sec === null || sec === undefined || isNaN(sec)) return '';
+      const sign = sec < 0 ? '-' : '';
+      sec = Math.abs(sec);
+      const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+      const mm = String(m).padStart(2, '0'), ss = String(s).padStart(2, '0');
+      return sign + (h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`);
+    }
+    const STATUS_LABELS = { OK: 'OK', MP: 'Punzonatura Errata', PM: 'Punzonatura Mancante', DSQ: 'Squalificato', DNS: 'Non partito', DNF: 'Non arrivato', RIT_M: 'Ritirato', RIT_F: 'Ritirata', FC: 'Fuori classifica', ALTRO: 'Da verificare' };
+
+    function activeColumns(includeStato) {
+      const defs = [];
+      if (opts.columns.pos) defs.push({ key: 'pos', label: 'Pos.', w: 36, align: 'center' });
+      if (opts.columns.nome) defs.push({ key: 'nome', label: 'Nome', w: 190, align: 'left' });
+      if (opts.columns.societa) defs.push({ key: 'societa', label: opts.columns.societaLabel || 'Società/Classe', w: 110, align: 'left' });
+      if (opts.columns.tempo) defs.push({ key: 'tempo', label: 'Tempo', w: 60, align: 'right' });
+      if (opts.columns.distacco) defs.push({ key: 'distacco', label: 'Distacco', w: 60, align: 'right' });
+      if (includeStato) defs.push({ key: 'stato', label: 'Stato', w: 90, align: 'left' });
+      const used = defs.reduce((s, d) => s + d.w, 0);
+      const extra = CONTENT_W - used;
+      const nomeDef = defs.find(d => d.key === 'nome');
+      if (nomeDef && extra > 0) nomeDef.w += extra;
+      return defs;
+    }
+
+    let page, cursorY;
+    function newPage() {
+      page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      cursorY = PAGE_H - MARGIN;
+      return page;
+    }
+
+    function centerText(text, font, size, boxX, boxW) {
+      const w = font.widthOfTextAtSize(text, size);
+      return boxX + (boxW - w) / 2;
+    }
+
+    // Rettangolo con angoli arrotondati opzionali: se opts.roundedCorners e' false, si comporta
+    // esattamente come page.drawRectangle. Il raggio si adatta da solo se il rettangolo e' piccolo.
+    const CORNER_RADIUS = 8;
+    function drawSection(x, y, width, height, color) {
+      if (!opts.roundedCorners) {
+        page.drawRectangle({ x, y, width, height, color });
+        return;
+      }
+      const r = Math.min(CORNER_RADIUS, width / 2, height / 2);
+      const path = `M ${r},0 H ${width - r} A ${r},${r} 0 0 1 ${width},${r} V ${height - r} A ${r},${r} 0 0 1 ${width - r},${height} H ${r} A ${r},${r} 0 0 1 0,${height - r} V ${r} A ${r},${r} 0 0 1 ${r},0 Z`;
+      page.drawSvgPath(path, { x, y: y + height, color });
+    }
+
+    function drawEventHeader() {
+      const subtitleLines = (eventData.eventName || '').split('|').map(s => s.trim()).filter(Boolean);
+      const linesCount = subtitleLines.length || 1;
+      const dateLine = eventData.eventDate ? `Data: ${formatDateIt(eventData.eventDate)}` : '';
+      const title = 'CLASSIFICA ORIENTEERING';
+
+      // Elenco completo dei loghi presenti (OService + cliente + eventuali extra: agenzia, sponsor...).
+      const allLogos = [brandLogo, clientLogo, ...extraLogosEmbedded].filter(Boolean);
+
+      if (allLogos.length >= 3) {
+        // MOLTI loghi: vanno tutti su una riga in alto, testo sotto.
+        const LOGO_ROW_H = 42;
+        const textBlockH = 16 + linesCount * 17 + (dateLine ? 13 : 0);
+        const headerH = LOGO_ROW_H + 10 + textBlockH + 20;
+        const boxY = cursorY - headerH;
+        drawSection(MARGIN, boxY, CONTENT_W, headerH, NAVY);
+
+        const gap = 14;
+        const slotW = Math.min(72, (CONTENT_W - gap * (allLogos.length - 1)) / allLogos.length);
+        const totalW = slotW * allLogos.length + gap * (allLogos.length - 1);
+        let lx = MARGIN + (CONTENT_W - totalW) / 2;
+        const rowTopY = boxY + headerH - 12;
+        allLogos.forEach(img => {
+          const scale = Math.min(slotW / img.width, LOGO_ROW_H / img.height);
+          const w = img.width * scale, h = img.height * scale;
+          page.drawImage(img, { x: lx + (slotW - w) / 2, y: rowTopY - LOGO_ROW_H + (LOGO_ROW_H - h) / 2, width: w, height: h });
+          lx += slotW + gap;
+        });
+
+        let ty = rowTopY - LOGO_ROW_H - 16;
+        page.drawText(title, { x: centerText(title, fontBold, 16, MARGIN, CONTENT_W), y: ty, size: 16, font: fontBold, color: TEXT_ON_BASE });
+        ty -= 21;
+        subtitleLines.forEach(line => {
+          page.drawText(line, { x: centerText(line, fontBold, 12, MARGIN, CONTENT_W), y: ty, size: 12, font: fontBold, color: TEXT_ON_BASE });
+          ty -= 17;
+        });
+        if (dateLine) {
+          page.drawText(dateLine, { x: centerText(dateLine, fontRegular, 9.5, MARGIN, CONTENT_W), y: ty, size: 9.5, font: fontRegular, color: TEXT_ON_BASE });
+        }
+        cursorY = boxY - 14;
+        return;
+      }
+
+      // 0, 1 o 2 loghi: layout classico ai due lati (invariato).
+      const dynamicHeaderH = 58 + linesCount * 17;
+      const headerH = Math.max(HEADER_H, dynamicHeaderH);
+
+      const boxY = cursorY - headerH;
+      drawSection(MARGIN, boxY, CONTENT_W, headerH, NAVY);
+
+      // Riserviamo una zona laterale fissa per ciascun logo presente, cosi' il testo centrale
+      // non rischia mai di sovrapporlo, indipendentemente da quanto e' largo il logo.
+      const LOGO_ZONE_W = 150;
+      // Spazio verticale tra il bordo superiore dell'header e il logo (il logo e' alto al massimo
+      // headerH - 2*LOGO_PAD, quindi il margine sopra/sotto vale LOGO_PAD). Riusiamo lo stesso
+      // valore come spazio orizzontale tra il logo e il testo centrale, su richiesta di Stefano.
+      const LOGO_PAD = 8;
+      const leftZone = brandLogo ? LOGO_ZONE_W : 0;
+      // Se manca il logo cliente, ripetiamo il logo OService anche a destra invece di lasciare vuoto.
+      const rightLogo = clientLogo || brandLogo;
+      const rightZone = rightLogo ? LOGO_ZONE_W : 0;
+
+      function drawLogoFit(img, zoneX, zoneW, maxH) {
+        if (!img) return;
+        const maxW = zoneW - 24;
+        const scale = Math.min(maxW / img.width, maxH / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        const x = zoneX + (zoneW - w) / 2;
+        const y = boxY + (headerH - h) / 2;
+        page.drawImage(img, { x, y, width: w, height: h });
+      }
+      drawLogoFit(brandLogo, MARGIN, leftZone, headerH - LOGO_PAD * 2);
+      drawLogoFit(rightLogo, MARGIN + CONTENT_W - rightZone, rightZone, headerH - LOGO_PAD * 2);
+
+      const textGapLeft = leftZone ? LOGO_PAD : 0;
+      const textGapRight = rightZone ? LOGO_PAD : 0;
+      const textZoneX = MARGIN + leftZone + textGapLeft;
+      const textZoneW = CONTENT_W - leftZone - rightZone - textGapLeft - textGapRight;
+
+      let ty = boxY + headerH - 24;
+      page.drawText(title, { x: centerText(title, fontBold, 16, textZoneX, textZoneW), y: ty, size: 16, font: fontBold, color: TEXT_ON_BASE });
+      ty -= 21;
+      subtitleLines.forEach(line => {
+        page.drawText(line, { x: centerText(line, fontBold, 12, textZoneX, textZoneW), y: ty, size: 12, font: fontBold, color: TEXT_ON_BASE });
+        ty -= 17;
+      });
+      if (dateLine) {
+        page.drawText(dateLine, { x: centerText(dateLine, fontRegular, 9.5, textZoneX, textZoneW), y: ty, size: 9.5, font: fontRegular, color: TEXT_ON_BASE });
+      }
+      cursorY = boxY - 14;
+    }
+
+    function formatDateIt(iso) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+      if (!m) return iso;
+      const mesi = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+      return `${parseInt(m[3],10)} ${mesi[parseInt(m[2],10)-1]} ${m[1]}`;
+    }
+
+    function drawCategoryBar(className, continuation) {
+      const boxY = cursorY - CAT_BAR_H;
+      drawSection(MARGIN, boxY, CONTENT_W, CAT_BAR_H, MIDBLUE);
+      const label = 'Categoria: ' + className + (continuation ? ' (segue)' : '');
+      page.drawText(label, { x: centerText(label, fontBold, 11.5, MARGIN, CONTENT_W), y: boxY + 8, size: 11.5, font: fontBold, color: TEXT_ON_MIDBLUE });
+      cursorY = boxY - 12;
+    }
+
+    function drawTableHeaderBand(cols) {
+      const boxY = cursorY - TABLE_HEAD_H;
+      drawSection(MARGIN, boxY, CONTENT_W, TABLE_HEAD_H, NAVY);
+      let x = MARGIN;
+      cols.forEach(c => {
+        const label = c.label;
+        let tx;
+        if (c.align === 'right') tx = x + c.w - fontBold.widthOfTextAtSize(label, 9.5) - 8;
+        else if (c.align === 'center') tx = centerText(label, fontBold, 9.5, x, c.w);
+        else tx = x + 8;
+        page.drawText(label, { x: tx, y: boxY + 7, size: 9.5, font: fontBold, color: TEXT_ON_BASE });
+        x += c.w;
+      });
+      cursorY = boxY;
+    }
+
+    function rowValues(r, includeStato) {
+      return {
+        pos: r.computedPosition ? String(r.computedPosition) : '',
+        nome: nameOf(r),
+        societa: r.org || '',
+        tempo: secondsToClock(r.timeSec),
+        distacco: r.computedPosition === 1 ? '' : secondsToClock(r.timeBehindSec),
+        stato: includeStato ? (STATUS_LABELS[r.status] || r.status) : '',
+      };
+    }
+
+    function drawDataRow(cols, values, fontSize, rowH, zebraOn, badgeColor) {
+      const rowTop = cursorY;
+      const rowY = cursorY - rowH;
+      if (zebraOn) page.drawRectangle({ x: MARGIN, y: rowY, width: CONTENT_W, height: rowH, color: ZEBRA });
+
+      let x = MARGIN;
+      const textY = rowY + (rowH - fontSize) / 2 + 2;
+      cols.forEach(c => {
+        const val = values[c.key] || '';
+        if (c.key === 'pos' && badgeColor) {
+          const badgeW = Math.min(c.w - 8, 22), badgeH = Math.min(rowH - 4, 15);
+          const bx = x + (c.w - badgeW) / 2, by = rowY + (rowH - badgeH) / 2;
+          page.drawRectangle({ x: bx, y: by, width: badgeW, height: badgeH, color: badgeColor });
+          const tx = centerText(val, fontBold, fontSize, x, c.w);
+          page.drawText(val, { x: tx, y: textY, size: fontSize, font: fontBold, color: TEXT });
+        } else {
+          let tx;
+          if (c.align === 'right') tx = x + c.w - fontRegular.widthOfTextAtSize(val, fontSize) - 8;
+          else if (c.align === 'center') tx = centerText(val, fontRegular, fontSize, x, c.w);
+          else tx = x + 8;
+          page.drawText(val, { x: tx, y: textY, size: fontSize, font: fontRegular, color: TEXT });
+        }
+        x += c.w;
+      });
+      cursorY = rowY;
+    }
+
+    function badgeForPosition(pos) {
+      if (pos === 1) return GOLD;
+      if (pos === 2) return SILVER;
+      if (pos === 3) return BRONZE;
+      return null;
+    }
+
+    for (const cls of eventData.classes) {
+      const ok = cls.results.filter(r => r.status === 'OK');
+      const others = cls.results.filter(r => r.status !== 'OK');
+      const mainCols = activeColumns(false);
+      const othersCols = activeColumns(true).filter(c => c.key !== 'pos' && c.key !== 'tempo' && c.key !== 'distacco');
+
+      newPage();
+      drawEventHeader();
+      drawCategoryBar(cls.name, false);
+
+      const othersBlockH = others.length ? (22 + 8 + TABLE_HEAD_H + others.length * 13) : 0;
+      const availableH = cursorY - MARGIN - TABLE_HEAD_H - othersBlockH;
+      const totalRows = ok.length;
+      let fontSize = 9.5, rowH = 17;
+      if (totalRows > 0) {
+        const idealRowH = availableH / totalRows;
+        if (idealRowH < rowH) {
+          rowH = opts.allowMultiPage ? Math.max(idealRowH, 9) : Math.max(idealRowH, 4);
+          fontSize = Math.max(opts.allowMultiPage ? 6.5 : 4.5, Math.min(9.5, rowH - 5));
+        }
+      }
+
+      drawTableHeaderBand(mainCols);
+      ok.forEach((r, i) => {
+        if (cursorY - rowH < MARGIN) {
+          if (opts.allowMultiPage) {
+            newPage();
+            drawEventHeader();
+            drawCategoryBar(cls.name, true);
+            drawTableHeaderBand(mainCols);
+          }
+        }
+        drawDataRow(mainCols, rowValues(r, false), fontSize, rowH, i % 2 === 1, badgeForPosition(r.computedPosition));
+      });
+
+      if (others.length) {
+        // Più spazio sopra "Fuori classifica" (staccato dagli ultimi classificati) e meno sotto,
+        // cosi' la scritta resta visivamente agganciata alla propria tabella, non a quella sopra.
+        cursorY -= 22;
+        const neededForOthersHeader = 8 + TABLE_HEAD_H + 13; // titolo + banda intestazione + almeno una riga
+        if (cursorY - neededForOthersHeader < MARGIN && opts.allowMultiPage) {
+          newPage(); drawEventHeader(); drawCategoryBar(cls.name, true);
+        }
+        page.drawText('Fuori classifica', { x: MARGIN, y: cursorY, size: 10, font: fontBold, color: ACCENT_ON_WHITE });
+        cursorY -= 8;
+        drawTableHeaderBand(othersCols);
+        others.forEach((r, i) => {
+          if (cursorY - 13 < MARGIN && opts.allowMultiPage) { newPage(); drawEventHeader(); drawCategoryBar(cls.name, true); drawTableHeaderBand(othersCols); }
+          drawDataRow(othersCols, rowValues(r, true), 8.5, 13, i % 2 === 1, null);
+        });
+      }
+    }
+
+    return pdfDoc.save();
+  })();
+}
+
+// Genera il PDF degli intertempi: intestazione identica alla classifica (loghi, colore, a capo con "|"),
+// poi una scheda compatta per atleta, quante più per pagina possibile senza scendere sotto una soglia
+// di leggibilità.
+
+function buildSplitsPdf(PDFLib, eventData, options) {
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+
+  const opts = Object.assign({
+    nameOrder: 'cognome-nome',
+    baseColorHex: '#1A3A6B',
+    brandLogoBytes: null, brandLogoType: null,
+    clientLogoBytes: null, clientLogoType: null,
+    extraLogos: [],
+    roundedCorners: false,
+  }, options);
+
+  function hexToRgb01(hex) {
+    hex = (hex || '#1A3A6B').replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+    const r = parseInt(hex.substring(0, 2), 16) / 255;
+    const g = parseInt(hex.substring(2, 4), 16) / 255;
+    const b = parseInt(hex.substring(4, 6), 16) / 255;
+    return { r: isNaN(r) ? 0.1 : r, g: isNaN(g) ? 0.23 : g, b: isNaN(b) ? 0.42 : b };
+  }
+  function mix(c1, c2, amount) { return { r: c1.r + (c2.r - c1.r) * amount, g: c1.g + (c2.g - c1.g) * amount, b: c1.b + (c2.b - c1.b) * amount }; }
+  function luminance(c) { return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; }
+  function toRgb(c) { return rgb(c.r, c.g, c.b); }
+
+  const WHITE01 = { r: 1, g: 1, b: 1 }, BLACK01 = { r: 0, g: 0, b: 0 };
+  const base01 = hexToRgb01(opts.baseColorHex);
+  const midblue01 = mix(base01, WHITE01, 0.32);
+  const textOnBase01 = luminance(base01) > 0.55 ? { r: 0.12, g: 0.12, b: 0.14 } : WHITE01;
+  const textOnMidblue01 = luminance(midblue01) > 0.55 ? { r: 0.12, g: 0.12, b: 0.14 } : WHITE01;
+
+  const NAVY = toRgb(base01);
+  const MIDBLUE = toRgb(midblue01);
+  const CARD_BORDER = rgb(0.85, 0.85, 0.88);
+  const WHITE = rgb(1, 1, 1);
+  const TEXT = rgb(0.12, 0.12, 0.14);
+  const MUTED = rgb(0.5, 0.5, 0.53);
+  const MISSING_COLOR = rgb(0.75, 0.25, 0.25);
+  const ADDITIONAL_COLOR = rgb(0.55, 0.45, 0.1);
+  const FINISH_COLOR = rgb(0.13, 0.45, 0.25);
+  const TEXT_ON_BASE = toRgb(textOnBase01);
+  const TEXT_ON_MIDBLUE = toRgb(textOnMidblue01);
+
+  return (async () => {
+    const pdfDoc = await PDFDocument.create();
+    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    async function embedLogo(bytes, type) {
+      if (!bytes) return null;
+      return type === 'jpg' ? pdfDoc.embedJpg(bytes) : pdfDoc.embedPng(bytes);
+    }
+    const brandLogo = await embedLogo(opts.brandLogoBytes, opts.brandLogoType);
+    const clientLogo = await embedLogo(opts.clientLogoBytes, opts.clientLogoType);
+    const extraLogosEmbedded = [];
+    for (const l of (opts.extraLogos || [])) {
+      const img = await embedLogo(l.bytes, l.type);
+      if (img) extraLogosEmbedded.push(img);
+    }
+
+    const PAGE_W = 595.28, PAGE_H = 841.89;
+    const MARGIN = 36;
+    const CONTENT_W = PAGE_W - MARGIN * 2;
+    const HEADER_H = 92;
+    const CAT_BAR_H = 26;
+
+    function nameOf(r) { return opts.nameOrder === 'nome-cognome' ? `${r.given} ${r.family}` : `${r.family} ${r.given}`; }
+    function secondsToClock(sec) {
+      if (sec === null || sec === undefined || isNaN(sec)) return '';
+      const sign = sec < 0 ? '-' : '';
+      sec = Math.abs(sec);
+      const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+      const mm = String(m).padStart(2, '0'), ss = String(s).padStart(2, '0');
+      return sign + (h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`);
+    }
+    const STATUS_LABELS = { OK: 'OK', MP: 'Punzonatura Errata', PM: 'Punzonatura Mancante', DSQ: 'Squalificato', DNS: 'Non partito', DNF: 'Non arrivato', RIT_M: 'Ritirato', RIT_F: 'Ritirata', FC: 'Fuori classifica', ALTRO: 'Da verificare' };
+    function centerText(text, font, size, boxX, boxW) {
+      const w = font.widthOfTextAtSize(text, size);
+      return boxX + (boxW - w) / 2;
+    }
+
+    // Stessa funzione usata nella classifica: rettangolo con angoli arrotondati opzionali.
+    const CORNER_RADIUS = 8;
+    function drawSection(x, y, width, height, fillColor, borderColor, borderWidth) {
+      if (!opts.roundedCorners) {
+        page.drawRectangle({ x, y, width, height, color: fillColor, borderColor, borderWidth });
+        return;
+      }
+      const r = Math.min(CORNER_RADIUS, width / 2, height / 2);
+      const path = `M ${r},0 H ${width - r} A ${r},${r} 0 0 1 ${width},${r} V ${height - r} A ${r},${r} 0 0 1 ${width - r},${height} H ${r} A ${r},${r} 0 0 1 0,${height - r} V ${r} A ${r},${r} 0 0 1 ${r},0 Z`;
+      page.drawSvgPath(path, { x, y: y + height, color: fillColor, borderColor, borderWidth });
+    }
+    function formatDateIt(iso) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+      if (!m) return iso;
+      const mesi = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+      return `${parseInt(m[3],10)} ${mesi[parseInt(m[2],10)-1]} ${m[1]}`;
+    }
+
+    let page, cursorY;
+    function newPage() { page = pdfDoc.addPage([PAGE_W, PAGE_H]); cursorY = PAGE_H - MARGIN; return page; }
+
+    function drawEventHeader() {
+      const subtitleLines = (eventData.eventName || '').split('|').map(s => s.trim()).filter(Boolean);
+      const linesCount = subtitleLines.length || 1;
+      const dateLine = eventData.eventDate ? `Data: ${formatDateIt(eventData.eventDate)}` : '';
+      const title = 'INTERTEMPI ORIENTEERING';
+
+      const allLogos = [brandLogo, clientLogo, ...extraLogosEmbedded].filter(Boolean);
+
+      if (allLogos.length >= 3) {
+        const LOGO_ROW_H = 42;
+        const textBlockH = 16 + linesCount * 17 + (dateLine ? 13 : 0);
+        const headerH = LOGO_ROW_H + 10 + textBlockH + 20;
+        const boxY = cursorY - headerH;
+        drawSection(MARGIN, boxY, CONTENT_W, headerH, NAVY);
+
+        const gap = 14;
+        const slotW = Math.min(72, (CONTENT_W - gap * (allLogos.length - 1)) / allLogos.length);
+        const totalW = slotW * allLogos.length + gap * (allLogos.length - 1);
+        let lx = MARGIN + (CONTENT_W - totalW) / 2;
+        const rowTopY = boxY + headerH - 12;
+        allLogos.forEach(img => {
+          const scale = Math.min(slotW / img.width, LOGO_ROW_H / img.height);
+          const w = img.width * scale, h = img.height * scale;
+          page.drawImage(img, { x: lx + (slotW - w) / 2, y: rowTopY - LOGO_ROW_H + (LOGO_ROW_H - h) / 2, width: w, height: h });
+          lx += slotW + gap;
+        });
+
+        let ty = rowTopY - LOGO_ROW_H - 16;
+        page.drawText(title, { x: centerText(title, fontBold, 16, MARGIN, CONTENT_W), y: ty, size: 16, font: fontBold, color: TEXT_ON_BASE });
+        ty -= 21;
+        subtitleLines.forEach(line => {
+          page.drawText(line, { x: centerText(line, fontBold, 12, MARGIN, CONTENT_W), y: ty, size: 12, font: fontBold, color: TEXT_ON_BASE });
+          ty -= 17;
+        });
+        if (dateLine) {
+          page.drawText(dateLine, { x: centerText(dateLine, fontRegular, 9.5, MARGIN, CONTENT_W), y: ty, size: 9.5, font: fontRegular, color: TEXT_ON_BASE });
+        }
+        cursorY = boxY - 14;
+        return;
+      }
+
+      const dynamicHeaderH = 58 + linesCount * 17;
+      const headerH = Math.max(HEADER_H, dynamicHeaderH);
+
+      const boxY = cursorY - headerH;
+      drawSection(MARGIN, boxY, CONTENT_W, headerH, NAVY);
+
+      const LOGO_ZONE_W = 150;
+      const LOGO_PAD = 8;
+      const leftZone = brandLogo ? LOGO_ZONE_W : 0;
+      // Se manca il logo cliente, ripetiamo il logo OService anche a destra invece di lasciare vuoto.
+      const rightLogo = clientLogo || brandLogo;
+      const rightZone = rightLogo ? LOGO_ZONE_W : 0;
+
+      function drawLogoFit(img, zoneX, zoneW, maxH) {
+        if (!img) return;
+        const maxW = zoneW - 24;
+        const scale = Math.min(maxW / img.width, maxH / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        const x = zoneX + (zoneW - w) / 2;
+        const y = boxY + (headerH - h) / 2;
+        page.drawImage(img, { x, y, width: w, height: h });
+      }
+      drawLogoFit(brandLogo, MARGIN, leftZone, headerH - LOGO_PAD * 2);
+      drawLogoFit(rightLogo, MARGIN + CONTENT_W - rightZone, rightZone, headerH - LOGO_PAD * 2);
+
+      const textGapLeft = leftZone ? LOGO_PAD : 0;
+      const textGapRight = rightZone ? LOGO_PAD : 0;
+      const textZoneX = MARGIN + leftZone + textGapLeft;
+      const textZoneW = CONTENT_W - leftZone - rightZone - textGapLeft - textGapRight;
+
+      let ty = boxY + headerH - 24;
+      page.drawText(title, { x: centerText(title, fontBold, 16, textZoneX, textZoneW), y: ty, size: 16, font: fontBold, color: TEXT_ON_BASE });
+      ty -= 21;
+      subtitleLines.forEach(line => {
+        page.drawText(line, { x: centerText(line, fontBold, 12, textZoneX, textZoneW), y: ty, size: 12, font: fontBold, color: TEXT_ON_BASE });
+        ty -= 17;
+      });
+      if (dateLine) {
+        page.drawText(dateLine, { x: centerText(dateLine, fontRegular, 9.5, textZoneX, textZoneW), y: ty, size: 9.5, font: fontRegular, color: TEXT_ON_BASE });
+      }
+      cursorY = boxY - 14;
+    }
+
+    function drawCategoryBar(className, continuation) {
+      const boxY = cursorY - CAT_BAR_H;
+      drawSection(MARGIN, boxY, CONTENT_W, CAT_BAR_H, MIDBLUE);
+      const label = 'Categoria: ' + className + (continuation ? ' (segue)' : '');
+      page.drawText(label, { x: centerText(label, fontBold, 11.5, MARGIN, CONTENT_W), y: boxY + 8, size: 11.5, font: fontBold, color: TEXT_ON_MIDBLUE });
+      cursorY = boxY - 10;
+      const legend = 'Ogni casella: N° progressivo e codice controllo — tempo parziale — tempo totale da partenza. "Arrivo" = tratto dall\'ultimo controllo al traguardo.';
+      page.drawText(legend, { x: MARGIN, y: cursorY, size: 7.3, font: fontRegular, color: MUTED });
+      cursorY -= 12;
+    }
+
+    const CELL_W = 56, CELL_H = 30, HEADER_LINE_H = 14, CARD_GAP = 7, CARD_PAD = 5;
+    const perRow = Math.max(1, Math.floor((CONTENT_W - CARD_PAD * 2) / CELL_W));
+
+    function computeLegTimes(r) {
+      const splits = r.splits || [];
+      let prevTime = 0;
+      let seqCounter = 0;
+      const out = splits.map((s) => {
+        let leg = null, seq = null;
+        if (s.splitStatus !== 'Additional') {
+          seqCounter += 1;
+          seq = seqCounter;
+          if (s.time !== null && prevTime !== null) leg = s.time - prevTime;
+          prevTime = (s.time !== null) ? s.time : null;
+        }
+        return Object.assign({}, s, { seq, leg, isFinish: false });
+      });
+      if (r.status === 'OK' && r.timeSec !== null && prevTime !== null && r.timeSec > prevTime) {
+        out.push({ code: 'Arrivo', time: r.timeSec, splitStatus: 'OK', seq: null, leg: r.timeSec - prevTime, isFinish: true });
+      }
+      return out;
+    }
+
+    function cardHeight(splitCount) {
+      const rows = Math.max(1, Math.ceil(splitCount / perRow));
+      return HEADER_LINE_H + rows * CELL_H + CARD_PAD * 2;
+    }
+
+    function drawCard(r) {
+      const splits = computeLegTimes(r);
+      const h = cardHeight(splits.length);
+      const topY = cursorY;
+      drawSection(MARGIN, topY - h, CONTENT_W, h, WHITE, CARD_BORDER, 0.75);
+
+      const posLabel = r.computedPosition ? `${r.computedPosition}.` : '—';
+      const rightLabel = r.status === 'OK' ? secondsToClock(r.timeSec) : (STATUS_LABELS[r.status] || r.status);
+      const headerText = `${posLabel} ${nameOf(r)} — ${r.org || ''}`;
+      page.drawText(headerText, { x: MARGIN + CARD_PAD, y: topY - CARD_PAD - 9, size: 9, font: fontBold, color: TEXT });
+      const rw = fontBold.widthOfTextAtSize(rightLabel, 9);
+      page.drawText(rightLabel, { x: MARGIN + CONTENT_W - CARD_PAD - rw, y: topY - CARD_PAD - 9, size: 9, font: fontBold, color: TEXT });
+
+      let cx = MARGIN + CARD_PAD, cy = topY - CARD_PAD - HEADER_LINE_H;
+      splits.forEach((s, i) => {
+        if (i > 0 && i % perRow === 0) { cx = MARGIN + CARD_PAD; cy -= CELL_H; }
+        let color = TEXT, legStr = s.leg !== null ? secondsToClock(s.leg) : '—', totStr = s.time !== null ? secondsToClock(s.time) : '—';
+        let seqLabel = s.isFinish ? 'Arrivo' : (s.splitStatus === 'Additional' ? `extra· ${s.code}` : `${s.seq}ª· ${s.code}`);
+        if (s.isFinish) color = FINISH_COLOR;
+        else if (s.splitStatus === 'Missing') color = MISSING_COLOR;
+        else if (s.splitStatus === 'Additional') color = ADDITIONAL_COLOR;
+        page.drawText(seqLabel, { x: cx + 3, y: cy - 8, size: 6.5, font: fontBold, color: s.isFinish ? FINISH_COLOR : MUTED });
+        page.drawText(legStr, { x: cx + 3, y: cy - 18, size: 8, font: fontBold, color });
+        page.drawText(totStr, { x: cx + 3, y: cy - 27, size: 6.5, font: fontRegular, color: MUTED });
+        cx += CELL_W;
+      });
+
+      cursorY = topY - h - CARD_GAP;
+    }
+
+    for (const cls of eventData.classes) {
+      const all = cls.results;
+      newPage();
+      drawEventHeader();
+      drawCategoryBar(cls.name, false);
+
+      all.forEach(r => {
+        const h = cardHeight(computeLegTimes(r).length);
+        if (cursorY - h < MARGIN) {
+          newPage();
+          drawEventHeader();
+          drawCategoryBar(cls.name, true);
+        }
+        drawCard(r);
+      });
+    }
+
+    return pdfDoc.save();
+  })();
+}
+
+/* ============ STATO APP ============ */
+let eventData = null;
+let activeClassIdx = 0;
+const STORAGE_KEY = 'classifiche_project_v1';
+
+function saveToStorage(){
+  if (!eventData) return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(eventData));
+  const el = document.getElementById('saveStatus');
+  el.textContent = 'Salvato ' + new Date().toLocaleTimeString('it-IT');
+}
+function loadFromStorage(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch(e){ return null; }
+}
+
+/* ============ RENDER ============ */
+function render(){
+  document.getElementById('editorArea').hidden = false;
+  document.getElementById('eventRow').hidden = false;
+  document.getElementById('eventInfo').value = eventData.eventName;
+  document.getElementById('eventDate').value = eventData.eventDate || '';
+  document.getElementById('eventInfoHint').hidden = false;
+  const archSaveBtn = document.getElementById('saveToArchiveBtn');
+  if (archSaveBtn) archSaveBtn.hidden = !currentClientId;
+
+  const wbox = document.getElementById('warningsBox');
+  wbox.innerHTML = '';
+  if (eventData.warnings && eventData.warnings.length){
+    const d = document.createElement('div');
+    d.className = 'warnings';
+    d.innerHTML = '<strong>Avvisi import:</strong><br>' + eventData.warnings.map(w=>'• '+w).join('<br>');
+    wbox.appendChild(d);
+  }
+
+  const tabsBar = document.getElementById('tabsBar');
+  tabsBar.innerHTML = '';
+  eventData.classes.forEach((cls, i) => {
+    const b = document.createElement('button');
+    b.className = 'tab-btn' + (i===activeClassIdx ? ' active' : '');
+    b.textContent = cls.name + ' (' + cls.results.length + ')';
+    b.onclick = () => { activeClassIdx = i; render(); };
+    tabsBar.appendChild(b);
+  });
+
+  renderTables();
+}
+
+function renderTables(){
+  const cls = eventData.classes[activeClassIdx];
+  recomputeClass(cls);
+
+  const ok = cls.results.filter(r=>r.status==='OK');
+  const others = cls.results.filter(r=>r.status!=='OK');
+
+  document.getElementById('mainTableWrap').innerHTML = buildMainTableHtml(ok);
+  document.getElementById('othersTableWrap').innerHTML = others.length ? buildOthersTableHtml(others) : '<div class="empty">Nessuno fuori classifica in questa categoria.</div>';
+
+  attachHandlers(cls);
+  saveToStorage();
+}
+
+function buildMainTableHtml(rows){
+  if (!rows.length) return '<div class="empty">Nessun atleta classificato in questa categoria.</div>';
+  let h = `<table><thead><tr>
+    <th class="pos-col">Pos.</th><th>Cognome</th><th>Nome</th><th>Società/Classe</th>
+    <th class="time-col">Tempo</th><th class="behind-col">Distacco</th><th class="status-col">Stato</th><th class="actions-col">Azioni</th>
+  </tr></thead><tbody>`;
+  rows.forEach(r => {
+    h += `<tr class="status-${r.status}" data-id="${r.id}">
+      <td class="pos-col"><input type="number" min="1" class="f-pos" value="${r.computedPosition}">${r.manualPosition!==null ? '<span class="manual-flag" title="Posizione fissata a mano">M</span><button class="reset-pos" data-action="reset-pos">annulla</button>' : ''}</td>
+      <td><input class="f-family" value="${escapeHtml(r.family)}"></td>
+      <td><input class="f-given" value="${escapeHtml(r.given)}"></td>
+      <td><input class="f-org" value="${escapeHtml(r.org)}"></td>
+      <td class="time-col"><input class="f-time" value="${secondsToClock(r.timeSec)}" placeholder="mm:ss"></td>
+      <td class="behind-col">${secondsToClock(r.timeBehindSec)}</td>
+      <td class="status-col"><select class="f-status">${statusOptions(r.status)}</select></td>
+      <td class="actions-col"><button class="swap-btn" data-action="swap" title="Inverti Nome/Cognome">⇄</button></td>
+    </tr>`;
+  });
+  h += '</tbody></table>';
+  return h;
+}
+
+function buildOthersTableHtml(rows){
+  let h = `<table><thead><tr>
+    <th>Cognome</th><th>Nome</th><th>Società/Classe</th><th class="status-col">Stato</th><th class="actions-col">Azioni</th>
+  </tr></thead><tbody>`;
+  rows.forEach(r => {
+    h += `<tr class="status-${r.status}" data-id="${r.id}">
+      <td><input class="f-family" value="${escapeHtml(r.family)}"></td>
+      <td><input class="f-given" value="${escapeHtml(r.given)}"></td>
+      <td><input class="f-org" value="${escapeHtml(r.org)}"></td>
+      <td class="status-col"><select class="f-status">${statusOptions(r.status)}</select></td>
+      <td class="actions-col"><button class="swap-btn" data-action="swap" title="Inverti Nome/Cognome">⇄</button></td>
+    </tr>`;
+  });
+  h += '</tbody></table>';
+  return h;
+}
+
+function statusOptions(current){
+  return Object.entries(STATUS_LABELS).map(([k,label]) =>
+    `<option value="${k}" ${k===current?'selected':''}>${label}</option>`
+  ).join('');
+}
+
+function escapeHtml(s){
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function attachHandlers(cls){
+  document.querySelectorAll('#mainTableWrap tr[data-id], #othersTableWrap tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id;
+    const rec = cls.results.find(r => r.id === id);
+    if (!rec) return;
+
+    // Nota tecnica: il ridisegno della tabella viene sempre rimandato al "tick" successivo (setTimeout 0).
+    // Se lo facessimo subito dentro l'evento, il browser starebbe ancora processando l'evento
+    // sull'elemento che stiamo per rimuovere dal DOM, causando un errore intermittente.
+    const rerender = () => setTimeout(renderTables, 0);
+
+    const posInput = tr.querySelector('.f-pos');
+    if (posInput) posInput.onchange = () => {
+      const v = parseInt(posInput.value, 10);
+      rec.manualPosition = isNaN(v) ? null : v;
+      rerender();
+    };
+    const resetBtn = tr.querySelector('[data-action="reset-pos"]');
+    if (resetBtn) resetBtn.onclick = () => { rec.manualPosition = null; rerender(); };
+
+    tr.querySelector('.f-family').onchange = e => { rec.family = e.target.value; saveToStorage(); };
+    tr.querySelector('.f-given').onchange = e => { rec.given = e.target.value; saveToStorage(); };
+    tr.querySelector('.f-org').onchange = e => { rec.org = e.target.value; saveToStorage(); };
+
+    const timeInput = tr.querySelector('.f-time');
+    if (timeInput) timeInput.onchange = () => {
+      const sec = clockToSeconds(timeInput.value);
+      if (sec === null && timeInput.value.trim() !== '') { alert('Formato tempo non valido. Usa mm:ss o h:mm:ss.'); timeInput.value = secondsToClock(rec.timeSec); return; }
+      rec.timeSec = sec;
+      rerender();
+    };
+
+    tr.querySelector('.f-status').onchange = e => { rec.status = e.target.value; rerender(); };
+
+    const swapBtn = tr.querySelector('[data-action="swap"]');
+    if (swapBtn) swapBtn.onclick = () => { const t = rec.family; rec.family = rec.given; rec.given = t; rerender(); };
+  });
+}
+
+/* ============ EVENTI ============ */
+async function loadXmlText(text){
+  try {
+    const invert = document.getElementById('invertToggle').checked;
+    eventData = parseIofXml(text, invert);
+    activeClassIdx = 0;
+    render();
+  } catch(err){
+    alert('Errore leggendo il file: ' + err.message);
+  }
+}
+
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  loadXmlText(await file.text());
+});
+
+document.getElementById('eventInfo').addEventListener('change', e => { if (eventData){ eventData.eventName = e.target.value; saveToStorage(); } });
+document.getElementById('eventDate').addEventListener('change', e => { if (eventData){ eventData.eventDate = e.target.value; saveToStorage(); } });
+
+const dropzone = document.getElementById('dropzone');
+['dragenter','dragover'].forEach(evt => dropzone.addEventListener(evt, e => {
+  e.preventDefault(); e.stopPropagation(); dropzone.classList.add('dragover');
+}));
+['dragleave','drop'].forEach(evt => dropzone.addEventListener(evt, e => {
+  e.preventDefault(); e.stopPropagation(); dropzone.classList.remove('dragover');
+}));
+dropzone.addEventListener('drop', async e => {
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.xml')) { alert('Trascina un file .xml (export IOF v3.0 di SI-Droid).'); return; }
+  loadXmlText(await file.text());
+});
+// Permette il drag&drop anche sopra il resto della pagina, non solo sul riquadro dedicato
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => { if (e.target !== dropzone) e.preventDefault(); });
+
+/* ============ LOGO ============ */
+let currentLogoBytes = null, currentLogoType = null;
+document.getElementById('logoInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) { currentLogoBytes = null; return; }
+  currentLogoBytes = new Uint8Array(await file.arrayBuffer());
+  currentLogoType = file.type === 'image/jpeg' ? 'jpg' : 'png';
+  const preview = document.getElementById('logoPreview');
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = 'inline-block';
+});
+
+// Logo OService: persistente in localStorage (base64), non va ricaricato ogni volta.
+const BRAND_LOGO_KEY = 'classifiche_brand_logo_v1';
+let brandLogoBytes = null, brandLogoType = null;
+
+function bytesToBase64(bytes) {
+  let bin = '';
+  bytes.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin);
+}
+function base64ToBytes(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function loadBrandLogo() {
+  const raw = localStorage.getItem(BRAND_LOGO_KEY);
+  if (!raw) return;
+  try {
+    const obj = JSON.parse(raw);
+    brandLogoBytes = base64ToBytes(obj.data);
+    brandLogoType = obj.type;
+    const preview = document.getElementById('brandLogoPreview');
+    preview.src = 'data:image/' + (brandLogoType === 'jpg' ? 'jpeg' : 'png') + ';base64,' + obj.data;
+    preview.style.display = 'inline-block';
+  } catch (e) { /* logo salvato corrotto, ignoro */ }
+}
+
+document.getElementById('brandLogoInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  brandLogoBytes = new Uint8Array(await file.arrayBuffer());
+  brandLogoType = file.type === 'image/jpeg' ? 'jpg' : 'png';
+  localStorage.setItem(BRAND_LOGO_KEY, JSON.stringify({ data: bytesToBase64(brandLogoBytes), type: brandLogoType }));
+  const preview = document.getElementById('brandLogoPreview');
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = 'inline-block';
+});
+loadBrandLogo();
+
+/* ============ ARCHIVIO PER CLIENTE (IndexedDB) ============ */
+// Offline al 100%: tutto vive nel browser di questo dispositivo. Non c'è un server che sincronizza
+// tra dispositivi diversi — per questo il backup/ripristino qui sotto non è un extra, è la sicurezza
+// per non perdere l'archivio se si cambia PC o si svuota la cache del browser.
+const ARCHIVE_DB_NAME = 'classificheArchivio';
+const ARCHIVE_DB_VERSION = 1;
+
+function openArchiveDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(ARCHIVE_DB_NAME, ARCHIVE_DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('clients')) db.createObjectStore('clients', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('events')) {
+        const es = db.createObjectStore('events', { keyPath: 'id' });
+        es.createIndex('clientId', 'clientId', { unique: false });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbReq(req) {
+  return new Promise((resolve, reject) => { req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
+}
+function archUid() { return 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9); }
+
+async function dbAddClient(name) {
+  const db = await openArchiveDB();
+  const client = { id: archUid(), name, logoBase64: null, logoType: null, createdAt: Date.now() };
+  await idbReq(db.transaction('clients', 'readwrite').objectStore('clients').add(client));
+  return client;
+}
+async function dbListClients() {
+  const db = await openArchiveDB();
+  return idbReq(db.transaction('clients', 'readonly').objectStore('clients').getAll());
+}
+async function dbUpdateClient(client) {
+  const db = await openArchiveDB();
+  await idbReq(db.transaction('clients', 'readwrite').objectStore('clients').put(client));
+}
+async function dbDeleteClient(id) {
+  const db = await openArchiveDB();
+  const tx = db.transaction(['clients', 'events'], 'readwrite');
+  tx.objectStore('clients').delete(id);
+  const idx = tx.objectStore('events').index('clientId');
+  await new Promise((resolve, reject) => {
+    const cursorReq = idx.openCursor(IDBKeyRange.only(id));
+    cursorReq.onsuccess = (e) => { const c = e.target.result; if (c) { c.delete(); c.continue(); } else resolve(); };
+    cursorReq.onerror = () => reject(cursorReq.error);
+  });
+}
+async function dbAddEvent(clientId, eventName, eventDate, data) {
+  const db = await openArchiveDB();
+  const ev = { id: archUid(), clientId, eventName, eventDate, savedAt: Date.now(), data };
+  await idbReq(db.transaction('events', 'readwrite').objectStore('events').add(ev));
+  return ev;
+}
+async function dbListEvents(clientId) {
+  const db = await openArchiveDB();
+  const idx = db.transaction('events', 'readonly').objectStore('events').index('clientId');
+  return idbReq(idx.getAll(IDBKeyRange.only(clientId)));
+}
+async function dbDeleteEvent(id) {
+  const db = await openArchiveDB();
+  await idbReq(db.transaction('events', 'readwrite').objectStore('events').delete(id));
+}
+async function dbGetAllForBackup() {
+  const db = await openArchiveDB();
+  const tx = db.transaction(['clients', 'events'], 'readonly');
+  const clients = await idbReq(tx.objectStore('clients').getAll());
+  const events = await idbReq(tx.objectStore('events').getAll());
+  return { clients, events, exportedAt: new Date().toISOString() };
+}
+async function dbRestoreFromBackup(backup) {
+  const db = await openArchiveDB();
+  const tx = db.transaction(['clients', 'events'], 'readwrite');
+  (backup.clients || []).forEach(c => tx.objectStore('clients').put(c));
+  (backup.events || []).forEach(e => tx.objectStore('events').put(e));
+  await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
+}
+
+let currentClientId = null;
+
+async function refreshClientSelect() {
+  const clients = await dbListClients();
+  clients.sort((a, b) => a.name.localeCompare(b.name, 'it'));
+  const sel = document.getElementById('clientSelect');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— Nessuno —</option>' + clients.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  sel.value = clients.find(c => c.id === prev) ? prev : '';
+}
+
+document.getElementById('newClientBtn').addEventListener('click', async () => {
+  const name = prompt('Nome del cliente (scuola o azienda):');
+  if (!name || !name.trim()) return;
+  const client = await dbAddClient(name.trim());
+  await refreshClientSelect();
+  document.getElementById('clientSelect').value = client.id;
+  await onClientSelected();
+});
+
+document.getElementById('clientSelect').addEventListener('change', onClientSelected);
+
+async function onClientSelected() {
+  currentClientId = document.getElementById('clientSelect').value || null;
+  const renameBtn = document.getElementById('renameClientBtn');
+  const deleteBtn = document.getElementById('deleteClientBtn');
+  const logoRow = document.getElementById('clientLogoRow');
+  const saveBtn = document.getElementById('saveToArchiveBtn');
+
+  if (!currentClientId) {
+    renameBtn.hidden = true; deleteBtn.hidden = true; logoRow.hidden = true; saveBtn.hidden = true;
+    document.getElementById('clientEventsList').innerHTML = '';
+    return;
+  }
+  renameBtn.hidden = false; deleteBtn.hidden = false; logoRow.hidden = false;
+  saveBtn.hidden = !eventData;
+
+  const clients = await dbListClients();
+  const client = clients.find(c => c.id === currentClientId);
+  const preview = document.getElementById('archiveClientLogoPreview');
+  if (client && client.logoBase64) {
+    const mime = 'data:image/' + (client.logoType === 'jpg' ? 'jpeg' : 'png') + ';base64,' + client.logoBase64;
+    preview.src = mime; preview.style.display = 'inline-block';
+    // Il logo del cliente selezionato diventa automaticamente il "logo cliente" usato per i PDF,
+    // cosi' non va ricaricato ogni volta che si riapre una sua classifica.
+    currentLogoBytes = base64ToBytes(client.logoBase64);
+    currentLogoType = client.logoType;
+    const mainPreview = document.getElementById('logoPreview');
+    mainPreview.src = mime; mainPreview.style.display = 'inline-block';
+  } else {
+    preview.style.display = 'none';
+  }
+  await refreshEventsList();
+}
+
+document.getElementById('archiveClientLogoInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentClientId) return;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = file.type === 'image/jpeg' ? 'jpg' : 'png';
+  const clients = await dbListClients();
+  const client = clients.find(c => c.id === currentClientId);
+  client.logoBase64 = bytesToBase64(bytes);
+  client.logoType = type;
+  await dbUpdateClient(client);
+  await onClientSelected();
+});
+
+document.getElementById('renameClientBtn').addEventListener('click', async () => {
+  const clients = await dbListClients();
+  const client = clients.find(c => c.id === currentClientId);
+  const name = prompt('Nuovo nome:', client.name);
+  if (!name || !name.trim()) return;
+  client.name = name.trim();
+  await dbUpdateClient(client);
+  await refreshClientSelect();
+  document.getElementById('clientSelect').value = currentClientId;
+});
+
+document.getElementById('deleteClientBtn').addEventListener('click', async () => {
+  if (!confirm('Eliminare questo cliente e TUTTE le sue classifiche archiviate? Non si può annullare.')) return;
+  await dbDeleteClient(currentClientId);
+  currentClientId = null;
+  await refreshClientSelect();
+  await onClientSelected();
+});
+
+async function refreshEventsList() {
+  const events = await dbListEvents(currentClientId);
+  events.sort((a, b) => b.savedAt - a.savedAt);
+  const container = document.getElementById('clientEventsList');
+  if (!events.length) { container.innerHTML = '<div class="empty">Nessuna classifica ancora archiviata per questo cliente.</div>'; return; }
+  container.innerHTML = '<table><thead><tr><th>Gara</th><th>Data</th><th>Salvata il</th><th class="actions-col">Azioni</th></tr></thead><tbody>' +
+    events.map(ev => `<tr data-id="${ev.id}">
+      <td>${escapeHtml((ev.eventName || '').replace(/\|/g, ' — '))}</td>
+      <td>${escapeHtml(ev.eventDate || '')}</td>
+      <td>${new Date(ev.savedAt).toLocaleString('it-IT')}</td>
+      <td class="actions-col"><button data-action="open" class="swap-btn">Apri</button> <button data-action="del" class="swap-btn" style="color:var(--danger);">Elim.</button></td>
+    </tr>`).join('') + '</tbody></table>';
+
+  container.querySelectorAll('tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id;
+    const ev = events.find(e => e.id === id);
+    tr.querySelector('[data-action="open"]').onclick = () => {
+      eventData = JSON.parse(JSON.stringify(ev.data));
+      activeClassIdx = 0;
+      render();
+    };
+    tr.querySelector('[data-action="del"]').onclick = async () => {
+      if (!confirm('Eliminare questa classifica archiviata? Non si può annullare.')) return;
+      await dbDeleteEvent(id);
+      await refreshEventsList();
+    };
+  });
+}
+
+document.getElementById('saveToArchiveBtn').addEventListener('click', async () => {
+  if (!eventData || !currentClientId) return;
+  await dbAddEvent(currentClientId, eventData.eventName, eventData.eventDate, eventData);
+  await refreshEventsList();
+  alert('Classifica salvata nell\'archivio di questo cliente.');
+});
+
+document.getElementById('exportArchiveBtn').addEventListener('click', async () => {
+  const backup = await dbGetAllForBackup();
+  downloadBytes(new TextEncoder().encode(JSON.stringify(backup)), 'archivio_classifiche_backup.json', 'application/json');
+});
+
+document.getElementById('importArchiveInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const backup = JSON.parse(await file.text());
+    await dbRestoreFromBackup(backup);
+    await refreshClientSelect();
+    alert('Backup ripristinato (' + (backup.clients || []).length + ' clienti, ' + (backup.events || []).length + ' classifiche).');
+  } catch (err) {
+    alert('File di backup non valido: ' + err.message);
+  }
+  e.target.value = '';
+});
+
+refreshClientSelect();
+
+/* ============ LOGHI EXTRA (agenzia, sponsor...) ============ */
+// Ogni voce: { bytes, type, previewUrl }. Non persistenti (cambiano più spesso dei loghi fissi).
+let extraLogos = [];
+
+function renderExtraLogosList() {
+  const container = document.getElementById('extraLogosList');
+  container.innerHTML = '';
+  extraLogos.forEach((logo, idx) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.marginBottom = '4px';
+    const img = document.createElement('img');
+    img.className = 'logo-preview';
+    img.style.display = 'inline-block';
+    img.src = logo.previewUrl;
+    const label = document.createElement('span');
+    label.style.fontSize = '.78rem';
+    label.textContent = logo.name || `Logo ${idx + 1}`;
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '✕';
+    removeBtn.style.cssText = 'border:none;background:none;color:var(--danger);cursor:pointer;font-size:.85rem;';
+    removeBtn.onclick = () => { extraLogos.splice(idx, 1); renderExtraLogosList(); };
+    row.append(img, label, removeBtn);
+    container.appendChild(row);
+  });
+}
+
+document.getElementById('addExtraLogoBtn').addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/png,image/jpeg';
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const type = file.type === 'image/jpeg' ? 'jpg' : 'png';
+    extraLogos.push({ bytes, type, previewUrl: URL.createObjectURL(file), name: file.name });
+    renderExtraLogosList();
+  };
+  input.click();
+});
+
+/* ============ EXPORT PDF ============ */
+function downloadBytes(bytes, filename, mime) {
+  const blob = new Blob([bytes], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+document.getElementById('societaLabelPreset').addEventListener('change', (e) => {
+  document.getElementById('societaLabelCustom').style.display = e.target.value === '__custom__' ? 'inline-block' : 'none';
+});
+
+document.getElementById('exportSplitsBtn').addEventListener('click', async () => {
+  if (!eventData) return;
+  const btn = document.getElementById('exportSplitsBtn');
+  btn.disabled = true; btn.textContent = 'Genero il PDF…';
+  try {
+    eventData.classes.forEach(recomputeClass);
+    const totalSplits = eventData.classes.reduce((s, c) => s + c.results.reduce((s2, r) => s2 + ((r.splits || []).length), 0), 0);
+    if (totalSplits === 0) {
+      alert('Questo progetto non contiene dati di intertempi (probabilmente è stato caricato prima che il programma li leggesse dal file). Ricarica il file XML originale con il pulsante in alto per rigenerarli.');
+      btn.disabled = false; btn.textContent = 'Esporta PDF intertempi';
+      return;
+    }
+    const nameOrder = document.querySelector('input[name="nameOrder"]:checked').value;
+    const bytes = await buildSplitsPdf(window.PDFLib, eventData, {
+      nameOrder,
+      baseColorHex: document.getElementById('baseColorPicker').value,
+      roundedCorners: document.getElementById('roundedCorners').checked,
+      brandLogoBytes, brandLogoType,
+      clientLogoBytes: currentLogoBytes, clientLogoType: currentLogoType,
+      extraLogos: extraLogos.map(l => ({ bytes: l.bytes, type: l.type })),
+    });
+    downloadBytes(bytes, 'intertempi.pdf', 'application/pdf');
+  } catch (err) {
+    alert('Errore nella generazione del PDF intertempi: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Esporta PDF intertempi';
+  }
+});
+
+document.getElementById('exportPdfBtn').addEventListener('click', async () => {
+  if (!eventData) return;
+  const btn = document.getElementById('exportPdfBtn');
+  btn.disabled = true; btn.textContent = 'Genero il PDF…';
+  try {
+    // Fondamentale: ricalcola posizioni/distacchi di TUTTE le categorie, non solo quella
+    // attualmente visibile a schermo — altrimenti le categorie mai aperte vengono esportate
+    // con i valori grezzi (posizione vuota, distacco a 0).
+    eventData.classes.forEach(recomputeClass);
+
+    const nameOrder = document.querySelector('input[name="nameOrder"]:checked').value;
+    const presetVal = document.getElementById('societaLabelPreset').value;
+    const societaLabel = presetVal === '__custom__'
+      ? (document.getElementById('societaLabelCustom').value.trim() || 'Società/Classe')
+      : presetVal;
+    const options = {
+      columns: {
+        pos: document.getElementById('colPos').checked,
+        nome: true,
+        societa: document.getElementById('colSocieta').checked,
+        societaLabel,
+        tempo: document.getElementById('colTempo').checked,
+        distacco: document.getElementById('colDistacco').checked,
+      },
+      nameOrder,
+      allowMultiPage: document.getElementById('allowMultiPage').checked,
+      baseColorHex: document.getElementById('baseColorPicker').value,
+      roundedCorners: document.getElementById('roundedCorners').checked,
+      brandLogoBytes, brandLogoType,
+      clientLogoBytes: currentLogoBytes, clientLogoType: currentLogoType,
+      extraLogos: extraLogos.map(l => ({ bytes: l.bytes, type: l.type })),
+    };
+    const bytes = await buildClassificaPdf(window.PDFLib, eventData, options);
+    downloadBytes(bytes, 'classifica.pdf', 'application/pdf');
+  } catch (err) {
+    alert('Errore nella generazione del PDF: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Esporta PDF classifica';
+  }
+});
+
+// Carica progetto salvato all'avvio, se presente
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = loadFromStorage();
+  if (saved){
+    eventData = saved;
+    render();
+  }
+});
+</script>
+</body>
+</html>

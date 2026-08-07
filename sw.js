@@ -1,6 +1,6 @@
-const CACHE='oservice-suite-v18';
+const CACHE='oservice-suite-v19';
 const ASSETS=[
-  './','./index.html','./attestati.html','./impaginatore.html','./comprimi.html','./manifest.json',
+  './','./index.html','./attestati.html','./impaginatore.html','./comprimi.html','./classifiche.html','./manifest.json',
   './gs/gs.mjs','./gs/gs.js','./gs/browser.js',  // gs.wasm (16MB) NON in precache: cache-first al primo uso
   './lib/pdf-lib-bundle.js',
   './icon-192.png','./icon-512.png','./icon-512-maskable.png',
