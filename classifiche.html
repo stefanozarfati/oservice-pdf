@@ -307,6 +307,8 @@ function recomputeClass(cls){
 
 // Genera il PDF della classifica, stile brandizzato OService (colori campionati dal PDF di riferimento fornito da Stefano)
 
+// Genera il PDF della classifica, stile brandizzato OService (colori campionati dal PDF di riferimento fornito da Stefano)
+
 function buildClassificaPdf(PDFLib, eventData, options) {
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
 
@@ -435,6 +437,14 @@ function buildClassificaPdf(PDFLib, eventData, options) {
       page.drawSvgPath(path, { x, y: y + height, color });
     }
 
+    // Riduce progressivamente la dimensione del font finché il testo non entra nello spazio
+    // disponibile, senza scendere sotto una soglia minima di leggibilità.
+    function fitFontSize(text, font, maxSize, minSize, maxWidth) {
+      let size = maxSize;
+      while (size > minSize && font.widthOfTextAtSize(text, size) > maxWidth) size -= 0.5;
+      return size;
+    }
+
     function drawEventHeader() {
       const subtitleLines = (eventData.eventName || '').split('|').map(s => s.trim()).filter(Boolean);
       const linesCount = subtitleLines.length || 1;
@@ -465,10 +475,12 @@ function buildClassificaPdf(PDFLib, eventData, options) {
         });
 
         let ty = rowTopY - LOGO_ROW_H - 16;
-        page.drawText(title, { x: centerText(title, fontBold, 16, MARGIN, CONTENT_W), y: ty, size: 16, font: fontBold, color: TEXT_ON_BASE });
+        const titleSize1 = fitFontSize(title, fontBold, 16, 10, CONTENT_W);
+        page.drawText(title, { x: centerText(title, fontBold, titleSize1, MARGIN, CONTENT_W), y: ty, size: titleSize1, font: fontBold, color: TEXT_ON_BASE });
         ty -= 21;
+        const subSize1 = subtitleLines.length ? Math.min(...subtitleLines.map(l => fitFontSize(l, fontBold, 12, 7, CONTENT_W))) : 12;
         subtitleLines.forEach(line => {
-          page.drawText(line, { x: centerText(line, fontBold, 12, MARGIN, CONTENT_W), y: ty, size: 12, font: fontBold, color: TEXT_ON_BASE });
+          page.drawText(line, { x: centerText(line, fontBold, subSize1, MARGIN, CONTENT_W), y: ty, size: subSize1, font: fontBold, color: TEXT_ON_BASE });
           ty -= 17;
         });
         if (dateLine) {
@@ -515,10 +527,12 @@ function buildClassificaPdf(PDFLib, eventData, options) {
       const textZoneW = CONTENT_W - leftZone - rightZone - textGapLeft - textGapRight;
 
       let ty = boxY + headerH - 24;
-      page.drawText(title, { x: centerText(title, fontBold, 16, textZoneX, textZoneW), y: ty, size: 16, font: fontBold, color: TEXT_ON_BASE });
+      const titleSize2 = fitFontSize(title, fontBold, 16, 10, textZoneW);
+      page.drawText(title, { x: centerText(title, fontBold, titleSize2, textZoneX, textZoneW), y: ty, size: titleSize2, font: fontBold, color: TEXT_ON_BASE });
       ty -= 21;
+      const subSize2 = subtitleLines.length ? Math.min(...subtitleLines.map(l => fitFontSize(l, fontBold, 12, 7, textZoneW))) : 12;
       subtitleLines.forEach(line => {
-        page.drawText(line, { x: centerText(line, fontBold, 12, textZoneX, textZoneW), y: ty, size: 12, font: fontBold, color: TEXT_ON_BASE });
+        page.drawText(line, { x: centerText(line, fontBold, subSize2, textZoneX, textZoneW), y: ty, size: subSize2, font: fontBold, color: TEXT_ON_BASE });
         ty -= 17;
       });
       if (dateLine) {
@@ -530,8 +544,7 @@ function buildClassificaPdf(PDFLib, eventData, options) {
     function formatDateIt(iso) {
       const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
       if (!m) return iso;
-      const mesi = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
-      return `${parseInt(m[3],10)} ${mesi[parseInt(m[2],10)-1]} ${m[1]}`;
+      return `${m[3]}-${m[2]}-${m[1]}`; // GG-MM-AAAA
     }
 
     function drawCategoryBar(className, continuation) {
@@ -758,8 +771,12 @@ function buildSplitsPdf(PDFLib, eventData, options) {
     function formatDateIt(iso) {
       const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
       if (!m) return iso;
-      const mesi = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
-      return `${parseInt(m[3],10)} ${mesi[parseInt(m[2],10)-1]} ${m[1]}`;
+      return `${m[3]}-${m[2]}-${m[1]}`; // GG-MM-AAAA
+    }
+    function fitFontSize(text, font, maxSize, minSize, maxWidth) {
+      let size = maxSize;
+      while (size > minSize && font.widthOfTextAtSize(text, size) > maxWidth) size -= 0.5;
+      return size;
     }
 
     let page, cursorY;
@@ -793,10 +810,12 @@ function buildSplitsPdf(PDFLib, eventData, options) {
         });
 
         let ty = rowTopY - LOGO_ROW_H - 16;
-        page.drawText(title, { x: centerText(title, fontBold, 16, MARGIN, CONTENT_W), y: ty, size: 16, font: fontBold, color: TEXT_ON_BASE });
+        const titleSize1 = fitFontSize(title, fontBold, 16, 10, CONTENT_W);
+        page.drawText(title, { x: centerText(title, fontBold, titleSize1, MARGIN, CONTENT_W), y: ty, size: titleSize1, font: fontBold, color: TEXT_ON_BASE });
         ty -= 21;
+        const subSize1 = subtitleLines.length ? Math.min(...subtitleLines.map(l => fitFontSize(l, fontBold, 12, 7, CONTENT_W))) : 12;
         subtitleLines.forEach(line => {
-          page.drawText(line, { x: centerText(line, fontBold, 12, MARGIN, CONTENT_W), y: ty, size: 12, font: fontBold, color: TEXT_ON_BASE });
+          page.drawText(line, { x: centerText(line, fontBold, subSize1, MARGIN, CONTENT_W), y: ty, size: subSize1, font: fontBold, color: TEXT_ON_BASE });
           ty -= 17;
         });
         if (dateLine) {
@@ -837,10 +856,12 @@ function buildSplitsPdf(PDFLib, eventData, options) {
       const textZoneW = CONTENT_W - leftZone - rightZone - textGapLeft - textGapRight;
 
       let ty = boxY + headerH - 24;
-      page.drawText(title, { x: centerText(title, fontBold, 16, textZoneX, textZoneW), y: ty, size: 16, font: fontBold, color: TEXT_ON_BASE });
+      const titleSize2 = fitFontSize(title, fontBold, 16, 10, textZoneW);
+      page.drawText(title, { x: centerText(title, fontBold, titleSize2, textZoneX, textZoneW), y: ty, size: titleSize2, font: fontBold, color: TEXT_ON_BASE });
       ty -= 21;
+      const subSize2 = subtitleLines.length ? Math.min(...subtitleLines.map(l => fitFontSize(l, fontBold, 12, 7, textZoneW))) : 12;
       subtitleLines.forEach(line => {
-        page.drawText(line, { x: centerText(line, fontBold, 12, textZoneX, textZoneW), y: ty, size: 12, font: fontBold, color: TEXT_ON_BASE });
+        page.drawText(line, { x: centerText(line, fontBold, subSize2, textZoneX, textZoneW), y: ty, size: subSize2, font: fontBold, color: TEXT_ON_BASE });
         ty -= 17;
       });
       if (dateLine) {
