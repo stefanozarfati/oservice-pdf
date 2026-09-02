@@ -74,6 +74,40 @@
   .homelink{color:#fff;text-decoration:none;font-weight:600;font-size:13px;background:rgba(255,255,255,.18);padding:6px 12px;border-radius:8px;flex-shrink:0;}
   header.suite-header .logo{height:44px;width:44px;object-fit:contain;display:block;flex-shrink:0;}
   header.suite-header h1{font-size:19px;font-weight:700;margin:0;color:#fff;}
+
+  /* ============ VISTA MOBILE (schermi stretti, es. telefono) ============
+     Tutto qui dentro si attiva SOLO sotto 700px. Sopra quella soglia (Mac)
+     nessuna di queste regole si applica: il layout desktop resta invariato. */
+  @media (max-width: 700px){
+    body{padding:12px;}
+    header.suite-header{margin:-12px -12px 16px;padding:12px 14px;}
+    h1{font-size:1.2rem;}
+    .panel{padding:12px;}
+
+    /* input di testo più grandi: sotto 16px Safari su iPhone fa zoom automatico al focus, fastidioso */
+    td input, td select, #eventInfo, #eventDate{font-size:16px;}
+
+    /* Tabella -> schede verticali. Tecnica standard: ogni riga diventa un blocco,
+       ogni cella diventa una riga label+valore usando data-label già presente nell'HTML. */
+    table{border:none;}
+    thead{display:none;}
+    tbody{display:block;}
+    tr{display:block;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:12px;}
+    td{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);width:auto !important;}
+    td:last-child{border-bottom:none;}
+    td::before{content:attr(data-label);font-size:.75rem;font-weight:600;color:var(--primary-dark);flex:0 0 auto;text-transform:uppercase;letter-spacing:.02em;}
+    td input, td select{flex:1 1 auto;min-width:0;text-align:right;}
+    td.pos-col{flex-wrap:wrap;}
+    td.actions-col{justify-content:flex-end;}
+
+    /* pulsanti più grandi al tocco (min. ~40px, indicazione touch target) */
+    .swap-btn{padding:8px 12px;font-size:1rem;}
+    .reset-pos{padding:4px 0;}
+    .tab-btn{padding:9px 14px;}
+
+    #eventRow{flex-direction:column;align-items:stretch;}
+    #eventInfo, #eventDate{flex:1 1 auto;min-width:0;}
+  }
 </style>
 </head>
 <body>
@@ -929,14 +963,14 @@ function buildMainTableHtml(rows){
   </tr></thead><tbody>`;
   rows.forEach(r => {
     h += `<tr class="status-${r.status}" data-id="${r.id}">
-      <td class="pos-col"><input type="number" min="1" class="f-pos" value="${r.computedPosition}">${r.manualPosition!==null ? '<span class="manual-flag" title="Posizione fissata a mano">M</span><button class="reset-pos" data-action="reset-pos">annulla</button>' : ''}</td>
-      <td><input class="f-family" value="${escapeHtml(r.family)}"></td>
-      <td><input class="f-given" value="${escapeHtml(r.given)}"></td>
-      <td><input class="f-org" value="${escapeHtml(r.org)}"></td>
-      <td class="time-col"><input class="f-time" value="${secondsToClock(r.timeSec)}" placeholder="mm:ss"></td>
-      <td class="behind-col">${secondsToClock(r.timeBehindSec)}</td>
-      <td class="status-col"><select class="f-status">${statusOptions(r.status)}</select></td>
-      <td class="actions-col"><button class="swap-btn" data-action="swap" title="Inverti Nome/Cognome">⇄</button></td>
+      <td class="pos-col" data-label="Pos."><input type="number" min="1" class="f-pos" value="${r.computedPosition}">${r.manualPosition!==null ? '<span class="manual-flag" title="Posizione fissata a mano">M</span><button class="reset-pos" data-action="reset-pos">annulla</button>' : ''}</td>
+      <td data-label="Cognome"><input class="f-family" value="${escapeHtml(r.family)}"></td>
+      <td data-label="Nome"><input class="f-given" value="${escapeHtml(r.given)}"></td>
+      <td data-label="Società/Classe"><input class="f-org" value="${escapeHtml(r.org)}"></td>
+      <td class="time-col" data-label="Tempo"><input class="f-time" value="${secondsToClock(r.timeSec)}" placeholder="mm:ss"></td>
+      <td class="behind-col" data-label="Distacco">${secondsToClock(r.timeBehindSec)}</td>
+      <td class="status-col" data-label="Stato"><select class="f-status">${statusOptions(r.status)}</select></td>
+      <td class="actions-col" data-label="Azioni"><button class="swap-btn" data-action="swap" title="Inverti Nome/Cognome">⇄</button></td>
     </tr>`;
   });
   h += '</tbody></table>';
@@ -949,11 +983,11 @@ function buildOthersTableHtml(rows){
   </tr></thead><tbody>`;
   rows.forEach(r => {
     h += `<tr class="status-${r.status}" data-id="${r.id}">
-      <td><input class="f-family" value="${escapeHtml(r.family)}"></td>
-      <td><input class="f-given" value="${escapeHtml(r.given)}"></td>
-      <td><input class="f-org" value="${escapeHtml(r.org)}"></td>
-      <td class="status-col"><select class="f-status">${statusOptions(r.status)}</select></td>
-      <td class="actions-col"><button class="swap-btn" data-action="swap" title="Inverti Nome/Cognome">⇄</button></td>
+      <td data-label="Cognome"><input class="f-family" value="${escapeHtml(r.family)}"></td>
+      <td data-label="Nome"><input class="f-given" value="${escapeHtml(r.given)}"></td>
+      <td data-label="Società/Classe"><input class="f-org" value="${escapeHtml(r.org)}"></td>
+      <td class="status-col" data-label="Stato"><select class="f-status">${statusOptions(r.status)}</select></td>
+      <td class="actions-col" data-label="Azioni"><button class="swap-btn" data-action="swap" title="Inverti Nome/Cognome">⇄</button></td>
     </tr>`;
   });
   h += '</tbody></table>';
