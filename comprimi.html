@@ -236,6 +236,9 @@ async function ensureEngine(){
 
 function gsArgs(d){
   return ["-sDEVICE=pdfwrite","-dCompatibilityLevel=1.4","-dNOPAUSE","-dQUIET","-dBATCH",
+    "-r72", // coordinate a scala 1:1: evita il rimpicciolimento 10x interno di pdfwrite,
+           // che nel motore PDF di Apple (Anteprima/Quick Look/Safari) fa perdere le
+           // maschere di trasparenza delle icone -> riquadri neri.
     "-dDetectDuplicateImages=true",
     "-dDownsampleColorImages=true","-dColorImageDownsampleType=/Bicubic","-dColorImageResolution="+d,"-dColorImageDownsampleThreshold=1.0",
     "-dDownsampleGrayImages=true","-dGrayImageDownsampleType=/Bicubic","-dGrayImageResolution="+d,"-dGrayImageDownsampleThreshold=1.0",
