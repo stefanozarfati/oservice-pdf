@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Comprimi PDF · OService PDF Suite</title>
 <script src="./pdfjs/pdf.min.js"></script>
+<script src="./lib/pdf-lib-bundle.js"></script>
 <style>
 :root{--navy:#062A63;--orange:#F36A01;--bg:#f4f5f7;--line:#e2e5ea;--ink:#1f2733;--muted:#6b7280;--ok:#2F7D4F;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
 *{box-sizing:border-box}html,body{margin:0}
@@ -107,6 +108,91 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
 <script>
 const pdfjsLib = window.pdfjsLib;
 pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdfjs/pdf.worker.min.js";
+const { PDFDocument, PDFName, PDFArray, PDFDict, decodePDFRawStream } = PDFLib;
+
+// ---- ripristino icone/loghi piccoli dopo la compressione Ghostscript ----
+// Alcune icone piccole (poche KB) usano una maschera di trasparenza che
+// Ghostscript, ricomprimendole in JPEG, puo' ricostruire in un modo che
+// alcuni lettori PDF (es. Anteprima su Mac) non mostrano correttamente
+// (riquadro nero al posto dell'icona). Siccome queste immagini pesano
+// pochissimo, il rimedio e' semplice: dopo la compressione, per le
+// immagini sotto una certa soglia di pixel, si rimettono i byte originali
+// (invariati) al posto di quelli ricompressi da Ghostscript. Il risparmio
+// di spazio non cambia in pratica; il difetto sparisce.
+const SMALL_PIXEL_THRESHOLD = 150000; // ~ sotto i 390x390 px
+
+function getContentBytes(context, contentsEntry){
+  let streams = contentsEntry instanceof PDFArray
+    ? Array.from({length: contentsEntry.size()}, (_,i)=>context.lookup(contentsEntry.get(i)))
+    : [contentsEntry];
+  const chunks = streams.map(s=>decodePDFRawStream(s).decode());
+  const total = chunks.reduce((a,c)=>a+c.length+1,0);
+  const out = new Uint8Array(total);
+  let off=0;
+  for(const c of chunks){ out.set(c,off); off+=c.length; out[off]=0x0a; off+=1; }
+  return out;
+}
+
+function findImagesInOrder(context, resources, contentBytes, depth, results){
+  if(depth>6) return;
+  const xobjectDict = resources && context.lookupMaybe(resources.get(PDFName.of("XObject")), PDFDict);
+  if(!xobjectDict) return;
+  const text = Array.from(contentBytes, b=>String.fromCharCode(b)).join("");
+  const re = /\/([^\s/()<>\[\]]+)\s+Do\b/g;
+  let m;
+  while((m = re.exec(text)) !== null){
+    const ref = xobjectDict.get(PDFName.of(m[1]));
+    if(!ref) continue;
+    const xobj = context.lookup(ref);
+    if(!xobj || !xobj.dict) continue;
+    const subtype = xobj.dict.get(PDFName.of("Subtype"));
+    const st = subtype && subtype.asString && subtype.asString();
+    if(st === "/Image"){
+      const w = xobj.dict.get(PDFName.of("Width"));
+      const h = xobj.dict.get(PDFName.of("Height"));
+      results.push({width: w?w.asNumber():0, height: h?h.asNumber():0, ref, xobj});
+    } else if(st === "/Form"){
+      const innerRes = context.lookupMaybe(xobj.dict.get(PDFName.of("Resources")), PDFDict) || resources;
+      try{
+        const innerContent = decodePDFRawStream(xobj).decode();
+        findImagesInOrder(context, innerRes, innerContent, depth+1, results);
+      }catch(e){ /* form illeggibile: si salta */ }
+    }
+  }
+}
+
+function imagesForPage(doc, pageIndex){
+  const page = doc.getPages()[pageIndex];
+  const context = doc.context;
+  const resources = context.lookupMaybe(page.node.get(PDFName.of("Resources")), PDFDict);
+  const contentsEntry = context.lookup(page.node.get(PDFName.of("Contents")));
+  const contentBytes = getContentBytes(context, contentsEntry);
+  const results = [];
+  findImagesInOrder(context, resources, contentBytes, 0, results);
+  return results;
+}
+
+async function restoreSmallImages(originalBytes, compressedBytes){
+  const origDoc = await PDFDocument.load(originalBytes, {updateMetadata:false});
+  const compDoc = await PDFDocument.load(compressedBytes, {updateMetadata:false});
+  const n = Math.min(origDoc.getPageCount(), compDoc.getPageCount());
+  let restored = 0;
+  for(let p=0; p<n; p++){
+    const oImgs = imagesForPage(origDoc, p);
+    const cImgs = imagesForPage(compDoc, p);
+    if(oImgs.length !== cImgs.length) continue; // sicurezza: pagina non toccata se il conteggio non torna
+    for(let i=0;i<oImgs.length;i++){
+      const o = oImgs[i], c = cImgs[i];
+      if(o.width*o.height >= SMALL_PIXEL_THRESHOLD) continue;
+      const cloned = o.xobj.clone(compDoc.context);
+      compDoc.context.assign(c.ref, cloned);
+      restored++;
+    }
+  }
+  const outBytes = await compDoc.save();
+  return {outBytes, restored};
+}
+// ---- fine ripristino icone/loghi piccoli ----
 
 let srcBytes=null, srcName="documento.pdf", outUrl=null, createModule=null, dpi=150;
 const $=id=>document.getElementById(id);
@@ -183,7 +269,12 @@ async function compress(){
   try{
     setMsg("Comprimo… puo richiedere qualche secondo.");
     await new Promise(r=>setTimeout(r,30));
-    const out=await gsRun(srcBytes,dpi);
+    let out=await gsRun(srcBytes,dpi);
+    try{
+      setMsg("Ripristino le icone piccole…");
+      const {outBytes}=await restoreSmallImages(srcBytes,out);
+      if(outBytes&&outBytes.length) out=outBytes;
+    }catch(e){ console.warn("ripristino icone non riuscito, uso l'output Ghostscript:",e); }
     const finalBytes=(out&&out.length&&out.length<srcBytes.length)?out:srcBytes;
     const gained=finalBytes!==srcBytes;
     $("rBefore").textContent=fmt(srcBytes.length);
