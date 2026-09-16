@@ -194,6 +194,54 @@ async function restoreSmallImages(originalBytes, compressedBytes){
 }
 // ---- fine ripristino icone/loghi piccoli ----
 
+// ---- pulizia ritagli impossibili prima della compressione ----
+// Alcuni PDF (es. generati da script pypdf) contengono rettangoli di ritaglio
+// con valori assurdi (centinaia di milioni di punti). I lettori PDF li ignorano
+// e disegnano lo stesso, ma Ghostscript li prende alla lettera e scarta il
+// contenuto che secondo quei numeri cadrebbe fuori: risultato, scritte che
+// spariscono dal file compresso. Qui li sostituiamo con il riquadro pagina.
+const CLIP_LIMITE = 1e6;
+function pulisciRitagliImpossibili(doc){
+  const ctx = doc.context;
+  let corretti = 0;
+  for(const page of doc.getPages()){
+    const mb = page.getMediaBox();
+    const sost = mb.x + " " + mb.y + " " + mb.width + " " + mb.height + " re";
+    const reClip = /(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+re/g;
+    const entry = ctx.lookup(page.node.get(PDFName.of("Contents")));
+    const streams = entry instanceof PDFArray
+      ? Array.from({length: entry.size()}, (_,i)=>({ref: entry.get(i), obj: ctx.lookup(entry.get(i))}))
+      : [{ref: page.node.get(PDFName.of("Contents")), obj: entry}];
+    for(const s of streams){
+      if(!s.obj) continue;
+      let testo;
+      try{ testo = new TextDecoder("latin1").decode(decodePDFRawStream(s.obj).decode()); }
+      catch(e){ continue; }
+      let n = 0;
+      const nuovoTesto = testo.replace(reClip, function(m,a,b,cc,d){
+        const vals=[a,b,cc,d].map(function(v){return Math.abs(parseFloat(v));});
+        if(Math.max.apply(null, vals) > CLIP_LIMITE){ n++; return sost; }
+        return m;
+      });
+      if(n>0){
+        const bytes = Uint8Array.from(nuovoTesto, function(ch){return ch.charCodeAt(0)&0xff;});
+        ctx.assign(s.ref, ctx.flateStream(bytes));
+        corretti += n;
+      }
+    }
+  }
+  return corretti;
+}
+async function preparaSorgente(bytes){
+  try{
+    const doc = await PDFDocument.load(bytes, {updateMetadata:false});
+    const n = pulisciRitagliImpossibili(doc);
+    if(n>0){ console.log("[pulizia] ritagli impossibili corretti:", n); return await doc.save(); }
+  }catch(e){ console.warn("pulizia ritagli non riuscita, uso il file originale:", e); }
+  return bytes;
+}
+// ---- fine pulizia ritagli ----
+
 let srcBytes=null, srcName="documento.pdf", outUrl=null, createModule=null, dpi=150;
 const $=id=>document.getElementById(id);
 const drop=$("drop"),input=$("fileInput"),go=$("go"),status=$("status"),result=$("result");
@@ -271,12 +319,8 @@ async function compress(){
   try{
     setMsg("Comprimo… puo richiedere qualche secondo.");
     await new Promise(r=>setTimeout(r,30));
-    let out=await gsRun(srcBytes,dpi);
-    try{
-      setMsg("Ripristino le icone piccole…");
-      const {outBytes}=await restoreSmallImages(srcBytes,out);
-      if(outBytes&&outBytes.length) out=outBytes;
-    }catch(e){ console.warn("ripristino icone non riuscito, uso l'output Ghostscript:",e); }
+    const srcPulito=await preparaSorgente(srcBytes);
+    let out=await gsRun(srcPulito,dpi);
     const finalBytes=(out&&out.length&&out.length<srcBytes.length)?out:srcBytes;
     const gained=finalBytes!==srcBytes;
     $("rBefore").textContent=fmt(srcBytes.length);
