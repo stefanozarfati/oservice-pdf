@@ -229,8 +229,8 @@ async function loadFile(file){
 async function ensureEngine(){
   if(!createModule){
     setMsg("Carico il motore Ghostscript…");
-    try{ const mod=await import("./gs/gs.mjs"); createModule=mod.default; }
-    catch(e){ throw new Error("motore non trovato: assicurati che gs.mjs, gs.js, browser.js, gs.wasm siano nella stessa cartella e che la pagina sia servita via http (non file://)."); }
+    try{ const mod=await import("./gs/gs.js"); createModule=mod.default; }
+    catch(e){ throw new Error("motore non trovato: assicurati che gs.js e gs.wasm siano nella stessa cartella e che la pagina sia servita via http (non file://)."); }
   }
 }
 
