@@ -21,11 +21,11 @@
   
   h1{font-size:26px;color:var(--navy);letter-spacing:.3px;font-weight:800}
   .sub{color:#6b7280;font-size:15px;max-width:440px;line-height:1.5}
-  .cards{display:grid;grid-template-columns:1fr 1fr;gap:18px;width:100%;max-width:760px;margin-top:30px}
-  @media(max-width:620px){.cards{grid-template-columns:1fr}}
+  .cards{display:flex;flex-wrap:wrap;justify-content:center;gap:18px;width:100%;max-width:750px;margin-top:30px}
   .card{position:relative;background:#fff;border:1px solid #e9edf2;border-radius:18px;padding:26px 24px;
-    text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:14px;
+    text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:14px;flex:1 1 210px;max-width:250px;
     box-shadow:0 6px 20px rgba(20,40,80,.05);transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;overflow:hidden}
+  @media(max-width:620px){.card{flex:1 1 100%;max-width:420px}}
   .card:hover{transform:translateY(-4px);box-shadow:0 16px 36px rgba(20,40,80,.13);border-color:#d7dde6}
   .card .ic{width:62px;height:62px;border-radius:15px;display:flex;align-items:center;justify-content:center}
   .card.att .ic{background:rgba(243,106,1,.12)}
@@ -39,6 +39,7 @@
   .card.att .stripe{background:rgba(243,106,1,.10)}
   .card.imp .stripe{background:rgba(6,42,99,.08)} .card.cmp .ic{background:rgba(47,125,79,.12)} .card.cmp .stripe{background:rgba(47,125,79,.10)} .card.cmp .go{color:#2F7D4F}
   .card.cls .ic{background:rgba(107,63,160,.12)} .card.cls .stripe{background:rgba(107,63,160,.10)} .card.cls .go{color:#6B3FA0}
+  .card.rfo .ic{background:rgba(14,116,144,.12)} .card.rfo .stripe{background:rgba(14,116,144,.10)} .card.rfo .go{color:#0E7490}
   .install-btn{margin-top:28px;background:var(--orange);color:#fff;border:0;padding:13px 24px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 8px 22px rgba(243,106,1,.32)}.install-btn:hover{filter:brightness(1.05)}.ios-hint{margin-top:24px;font-size:13.5px;color:#6b7280;background:#fff;border:1px solid #e9edf2;border-radius:10px;padding:11px 16px;max-width:440px;text-align:center;line-height:1.5}.ios-hint b{color:var(--navy)}
 footer{margin-top:36px;color:#9aa3af;font-size:12.5px;text-align:center;line-height:1.6}
   footer b{color:#6b7280}
@@ -93,6 +94,15 @@ footer{margin-top:36px;color:#9aa3af;font-size:12.5px;text-align:center;line-hei
         </div>
         <h2>Classifiche</h2>
         <p>Importa i risultati SI-Droid, correggi punteggi e posizioni, esporta classifica e intertempi in PDF. Archivio per cliente.</p>
+        <div class="go">Apri &rarr;</div>
+      </a>
+      <a class="card rfo" href="retro-foto-orienteering.html">
+        <div class="stripe"></div>
+        <div class="ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0E7490" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5.5-5.5a1.5 1.5 0 0 0-2.1 0L4 19"/></svg>
+        </div>
+        <h2>Retro Foto Orienteering</h2>
+        <p>Griglie di foto da abbinare ai punti di controllo, loghi liberi ed etichette personalizzabili. Esporta in PDF alla qualità che vuoi.</p>
         <div class="go">Apri &rarr;</div>
       </a>
 </div>
