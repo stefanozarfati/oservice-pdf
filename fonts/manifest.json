@@ -1,0 +1,266 @@
+{
+  "fonts": [
+    {
+      "id": "cinzel",
+      "name": "Cinzel",
+      "category": "decorativo",
+      "weights": [
+        400,
+        700
+      ],
+      "styles": [
+        "normal"
+      ],
+      "files": {
+        "400": "fonts/cinzel/cinzel-400.woff2",
+        "700": "fonts/cinzel/cinzel-700.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/cinzel/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/cinzel"
+    },
+    {
+      "id": "allura",
+      "name": "Allura",
+      "category": "manoscritto",
+      "weights": [
+        400
+      ],
+      "styles": [
+        "normal"
+      ],
+      "files": {
+        "400": "fonts/allura/allura-400.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/allura/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/allura"
+    },
+    {
+      "id": "abril-fatface",
+      "name": "Abril Fatface",
+      "category": "decorativo",
+      "weights": [
+        400
+      ],
+      "styles": [
+        "normal"
+      ],
+      "files": {
+        "400": "fonts/abril-fatface/abril-fatface-400.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/abril-fatface/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/abril-fatface"
+    },
+    {
+      "id": "playfair-display",
+      "name": "Playfair Display",
+      "category": "graziato",
+      "weights": [
+        400,
+        700
+      ],
+      "styles": [
+        "normal",
+        "italic"
+      ],
+      "files": {
+        "400": "fonts/playfair-display/playfair-display-400.woff2",
+        "700": "fonts/playfair-display/playfair-display-700.woff2",
+        "400i": "fonts/playfair-display/playfair-display-400i.woff2",
+        "700i": "fonts/playfair-display/playfair-display-700i.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/playfair-display/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/playfair-display"
+    },
+    {
+      "id": "lora",
+      "name": "Lora",
+      "category": "graziato",
+      "weights": [
+        400,
+        700
+      ],
+      "styles": [
+        "normal",
+        "italic"
+      ],
+      "files": {
+        "400": "fonts/lora/lora-400.woff2",
+        "700": "fonts/lora/lora-700.woff2",
+        "400i": "fonts/lora/lora-400i.woff2",
+        "700i": "fonts/lora/lora-700i.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/lora/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/lora"
+    },
+    {
+      "id": "cormorant-garamond",
+      "name": "Cormorant Garamond",
+      "category": "graziato",
+      "weights": [
+        400,
+        700
+      ],
+      "styles": [
+        "normal",
+        "italic"
+      ],
+      "files": {
+        "400": "fonts/cormorant-garamond/cormorant-garamond-400.woff2",
+        "700": "fonts/cormorant-garamond/cormorant-garamond-700.woff2",
+        "400i": "fonts/cormorant-garamond/cormorant-garamond-400i.woff2",
+        "700i": "fonts/cormorant-garamond/cormorant-garamond-700i.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/cormorant-garamond/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/cormorant-garamond"
+    },
+    {
+      "id": "pt-serif",
+      "name": "PT Serif",
+      "category": "graziato",
+      "weights": [
+        400,
+        700
+      ],
+      "styles": [
+        "normal",
+        "italic"
+      ],
+      "files": {
+        "400": "fonts/pt-serif/pt-serif-400.woff2",
+        "700": "fonts/pt-serif/pt-serif-700.woff2",
+        "400i": "fonts/pt-serif/pt-serif-400i.woff2",
+        "700i": "fonts/pt-serif/pt-serif-700i.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/pt-serif/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/pt-serif"
+    },
+    {
+      "id": "open-sans",
+      "name": "Open Sans",
+      "category": "bastone",
+      "weights": [
+        400,
+        700
+      ],
+      "styles": [
+        "normal",
+        "italic"
+      ],
+      "files": {
+        "400": "fonts/open-sans/open-sans-400.woff2",
+        "700": "fonts/open-sans/open-sans-700.woff2",
+        "400i": "fonts/open-sans/open-sans-400i.woff2",
+        "700i": "fonts/open-sans/open-sans-700i.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/open-sans/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/open-sans"
+    },
+    {
+      "id": "montserrat",
+      "name": "Montserrat",
+      "category": "bastone",
+      "weights": [
+        400,
+        700
+      ],
+      "styles": [
+        "normal",
+        "italic"
+      ],
+      "files": {
+        "400": "fonts/montserrat/montserrat-400.woff2",
+        "700": "fonts/montserrat/montserrat-700.woff2",
+        "400i": "fonts/montserrat/montserrat-400i.woff2",
+        "700i": "fonts/montserrat/montserrat-700i.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/montserrat/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/montserrat"
+    },
+    {
+      "id": "oswald",
+      "name": "Oswald",
+      "category": "bastone",
+      "weights": [
+        400,
+        700
+      ],
+      "styles": [
+        "normal"
+      ],
+      "files": {
+        "400": "fonts/oswald/oswald-400.woff2",
+        "700": "fonts/oswald/oswald-700.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/oswald/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/oswald"
+    },
+    {
+      "id": "roboto-mono",
+      "name": "Roboto Mono",
+      "category": "monospace",
+      "weights": [
+        400,
+        700
+      ],
+      "styles": [
+        "normal",
+        "italic"
+      ],
+      "files": {
+        "400": "fonts/roboto-mono/roboto-mono-400.woff2",
+        "700": "fonts/roboto-mono/roboto-mono-700.woff2",
+        "400i": "fonts/roboto-mono/roboto-mono-400i.woff2",
+        "700i": "fonts/roboto-mono/roboto-mono-700i.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/roboto-mono/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/roboto-mono"
+    },
+    {
+      "id": "dancing-script",
+      "name": "Dancing Script",
+      "category": "manoscritto",
+      "weights": [
+        400,
+        700
+      ],
+      "styles": [
+        "normal"
+      ],
+      "files": {
+        "400": "fonts/dancing-script/dancing-script-400.woff2",
+        "700": "fonts/dancing-script/dancing-script-700.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/dancing-script/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/dancing-script"
+    },
+    {
+      "id": "sacramento",
+      "name": "Sacramento",
+      "category": "manoscritto",
+      "weights": [
+        400
+      ],
+      "styles": [
+        "normal"
+      ],
+      "files": {
+        "400": "fonts/sacramento/sacramento-400.woff2"
+      },
+      "license": "OFL-1.1",
+      "licenseFile": "fonts/sacramento/LICENSE.txt",
+      "source": "https://fontsource.org/fonts/sacramento"
+    }
+  ]
+}
