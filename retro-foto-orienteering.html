@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OService Retro Foto Orienteering</title>
+<style>
+:root{
+  --teal:#0E7490; --teal-ink:#0a5c70; --ink:#1f2733; --muted:#6b7280;
+  --bg:#f4f5f7; --line:#e2e5ea; --card:#ffffff; --cell:#eef2f5; --cell-line:#c7ced6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14181c; --ink:#e8eaed; --card:#1c2126; --line:#2a3038; --muted:#9aa3af;
+    --cell:#242b32; --cell-line:#39424c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14181c; --ink:#e8eaed; --card:#1c2126; --line:#2a3038; --muted:#9aa3af;
+  --cell:#242b32; --cell-line:#39424c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+header{background:var(--teal);color:#fff;padding:14px 20px;font-weight:800;font-size:17px;
+  display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5;
+  box-shadow:0 2px 10px rgba(0,0,0,.15)}
+header .sub{margin-left:auto;font-size:12px;opacity:.85;font-weight:500}
+header .logo{height:34px;width:34px;object-fit:contain;flex-shrink:0}
+header h1{font-size:17px;font-weight:800;margin:0}
+.homelink{display:inline-block;color:#fff;text-decoration:none;font-weight:600;font-size:12.5px;
+  background:rgba(255,255,255,.18);padding:5px 10px;border-radius:8px;flex-shrink:0}
+.homelink:hover{background:rgba(255,255,255,.28)}
+.wrap{display:grid;grid-template-columns:340px 1fr;gap:16px;padding:16px;max-width:1200px;margin:0 auto}
+@media (max-width:840px){.wrap{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+label{display:block;font-size:11.5px;color:var(--muted);margin:14px 0 5px;
+  text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+label:first-child{margin-top:0}
+input[type=text],input[type=number],select,textarea{
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg);color:var(--ink);font-size:14px;font-family:inherit}
+textarea{min-height:56px;resize:vertical;line-height:1.35}
+.editable{width:100%;min-height:56px;padding:8px 10px;border:1px solid var(--line);
+  border-radius:8px;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.35;
+  white-space:pre-wrap;outline:none}
+.editable:focus{border-color:var(--teal)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fmtBtn{padding:8px 0;border:1px solid var(--line);border-radius:8px;background:var(--card);
+  color:var(--ink);cursor:pointer;font-size:14px}
+.fmtBtn:active{background:var(--teal);color:#fff}
+.badge{margin-top:16px;padding:12px 14px;background:rgba(14,116,144,.12);
+  border-left:3px solid var(--teal);border-radius:8px;font-size:13px;line-height:1.6}
+.badge b{color:var(--teal-ink)}
+:root[data-theme="dark"] .badge b, .badge b{color:var(--teal)}
+.note{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.5}
+.previewArea{display:flex;justify-content:center;align-items:flex-start;
+  overflow:auto;min-height:400px;padding-top:4px}
+.page{position:relative;background:#fff;box-shadow:0 6px 24px rgba(0,0,0,.18);flex-shrink:0}
+.htext,.ftext{position:absolute;left:0;right:0;text-align:center;white-space:pre-wrap;
+  color:#111;font-family:Georgia,serif}
+.grid-area{position:absolute;display:flex;flex-wrap:wrap;justify-content:center;
+  align-content:flex-start}
+.logoLayer{position:absolute;inset:0;pointer-events:none}
+.logoBox{position:absolute;pointer-events:auto;box-sizing:border-box;
+  border:2px dashed var(--teal);border-radius:4px;
+  background:repeating-linear-gradient(45deg,rgba(14,116,144,.10) 0 6px,transparent 6px 12px);
+  display:flex;align-items:center;justify-content:center;color:var(--teal);
+  font-weight:700;font-size:11px;text-align:center;cursor:move;user-select:none}
+.logoBox img{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;
+  pointer-events:none}
+.logoBox .swap{position:absolute;top:-9px;left:-9px;width:18px;height:18px;border-radius:50%;
+  background:var(--teal);color:#fff;font-size:11px;line-height:18px;text-align:center;
+  cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.logoBox .del{position:absolute;top:-9px;right:-9px;width:18px;height:18px;border-radius:50%;
+  background:#c0392b;color:#fff;font-size:12px;line-height:18px;text-align:center;
+  cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.logoBox .resize{position:absolute;right:-4px;bottom:-4px;width:14px;height:14px;
+  background:var(--teal);border:2px solid #fff;border-radius:50%;cursor:nwse-resize}
+.logoBox .saveLib{position:absolute;bottom:-9px;left:-9px;width:18px;height:18px;border-radius:50%;
+  background:var(--teal);color:#fff;font-size:10px;line-height:18px;text-align:center;
+  cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.cell{display:flex;flex-direction:column;overflow:hidden;flex:0 0 auto}
+.cell .photo{position:relative;flex:1;background:var(--cell);border:1px solid var(--cell-line);
+  border-radius:3px 3px 0 0;cursor:pointer;overflow:hidden}
+.cell .photo img{width:100%;height:100%;object-fit:cover;display:block;cursor:move}
+.cell .photoUrlBtn{position:absolute;top:3px;right:3px;width:18px;height:18px;
+  background:rgba(255,255,255,.9);border-radius:50%;font-size:11px;line-height:18px;
+  text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.3);cursor:pointer}
+.cell .cellSwap{position:absolute;top:3px;left:3px;width:18px;height:18px;
+  background:rgba(255,255,255,.9);border-radius:50%;font-size:12px;line-height:18px;
+  text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.3);cursor:pointer}
+.cell .zoomBtn{position:absolute;bottom:3px;width:18px;height:18px;
+  background:rgba(255,255,255,.9);border-radius:50%;font-size:14px;font-weight:700;
+  line-height:16px;text-align:center;color:#333;box-shadow:0 1px 2px rgba(0,0,0,.3);cursor:pointer}
+.cell .zin{right:3px}
+.cell .zout{right:23px}
+.cell .labelrow{display:flex;border:1px solid var(--cell-line);border-top:0;
+  border-radius:0 0 3px 3px;background:#fff}
+.cell .lbl{flex:1;display:flex;align-items:center;justify-content:center;
+  font-weight:700;color:#444;border-right:1px solid var(--cell-line);
+  cursor:text;outline:none;overflow:hidden}
+.cell .lbl2{flex:1;cursor:text;outline:none;display:flex;align-items:center;
+  justify-content:center;color:#c0392b;font-weight:700;overflow:hidden}
+.cell .lbl:focus,.cell .lbl2:focus{background:rgba(14,116,144,.12)}
+</style>
+</head>
+<body>
+
+<header><a href="index.html" class="homelink" title="Torna alla home">← Home</a><img class="logo" alt="OService" src="data:image/png;base64,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"><h1>🗺️ Retro Foto Orienteering</h1><span class="sub">griglia foto · loghi liberi · export PDF</span></header>
+
+<div class="wrap">
+  <div class="panel">
+    <label>Nome progetto</label>
+    <input type="text" id="pname" value="Photo Orienteering">
+
+    <div class="row2" style="margin-top:8px">
+      <select id="exportDpi">
+        <option value="72">72 dpi (schermo)</option>
+        <option value="150">150 dpi</option>
+        <option value="200">200 dpi</option>
+        <option value="300" selected>300 dpi (stampa standard)</option>
+        <option value="400">400 dpi</option>
+        <option value="600">600 dpi (alta qualità)</option>
+      </select>
+      <button type="button" id="exportPdfBtn" class="fmtBtn"
+        style="background:#c0392b;color:#fff;border-color:#c0392b;font-weight:700">
+        📄 Esporta PDF
+      </button>
+    </div>
+
+    <div class="row2" style="margin-top:8px">
+      <button type="button" id="saveProjectBtn" class="fmtBtn"
+        style="background:var(--teal);color:#fff;border-color:var(--teal);font-weight:700">
+        💾 Salva progetto
+      </button>
+      <select id="openProjectSel"><option value="">📂 Apri…</option></select>
+    </div>
+    <div class="note" style="display:flex;gap:12px;align-items:center;margin-top:6px">
+      <a href="#" id="exportProjectLink" style="color:var(--teal)">Esporta su file</a>
+      <a href="#" id="importProjectLink" style="color:var(--teal)">Importa da file</a>
+      <button type="button" id="deleteProjectBtn" class="fmtBtn" style="margin-left:auto;padding:4px 8px"
+        title="Elimina il progetto aperto">🗑</button>
+    </div>
+    <input type="file" id="importProjectInput" accept="application/json" style="display:none">
+
+    <div class="row2">
+      <div>
+        <label>Formato pagina</label>
+        <select id="pformat">
+          <option value="A5">A5 (148×210)</option>
+          <option value="A4" selected>A4 (210×297)</option>
+          <option value="A3">A3 (297×420)</option>
+          <option value="A2">A2 (420×594)</option>
+        </select>
+      </div>
+      <div>
+        <label>Orientamento</label>
+        <select id="porient">
+          <option value="v" selected>Verticale</option>
+          <option value="o">Orizzontale</option>
+        </select>
+      </div>
+    </div>
+
+    <label>Formato testo — seleziona una parola o anche una sola lettera, poi scegli</label>
+    <div class="row2">
+      <select id="fontSel">
+        <optgroup label="Bastone">
+          <option value="'Open Sans', sans-serif">Open Sans</option>
+          <option value="Montserrat, sans-serif">Montserrat</option>
+          <option value="Oswald, sans-serif">Oswald (condensato)</option>
+        </optgroup>
+        <optgroup label="Graziato">
+          <option value="Lora, serif">Lora</option>
+          <option value="'PT Serif', serif">PT Serif</option>
+          <option value="'Playfair Display', serif">Playfair Display</option>
+          <option value="'Cormorant Garamond', serif">Cormorant Garamond</option>
+        </optgroup>
+        <optgroup label="Decorativo">
+          <option value="Cinzel, serif">Cinzel</option>
+          <option value="'Abril Fatface', serif">Abril Fatface</option>
+        </optgroup>
+        <optgroup label="Manoscritto">
+          <option value="Allura, cursive">Allura</option>
+          <option value="'Dancing Script', cursive">Dancing Script</option>
+          <option value="Sacramento, cursive">Sacramento</option>
+        </optgroup>
+        <optgroup label="Monospace">
+          <option value="'Roboto Mono', monospace">Roboto Mono</option>
+        </optgroup>
+      </select>
+      <input type="color" id="colorSel" value="#111111"
+        style="width:100%;height:38px;padding:2px;border:1px solid var(--line);
+        border-radius:8px;background:var(--bg);cursor:pointer">
+    </div>
+    <div class="row2" style="grid-template-columns:repeat(5,1fr);margin-top:8px">
+      <button type="button" id="boldBtn" class="fmtBtn" style="font-weight:800">B</button>
+      <button type="button" id="italicBtn" class="fmtBtn" style="font-style:italic">I</button>
+      <button type="button" id="underlineBtn" class="fmtBtn" style="text-decoration:underline">U</button>
+      <button type="button" id="sizeDownBtn" class="fmtBtn">A−</button>
+      <button type="button" id="sizeUpBtn" class="fmtBtn">A+</button>
+    </div>
+    <div class="row2" style="grid-template-columns:repeat(3,1fr);margin-top:8px">
+      <button type="button" id="alignLeftBtn" class="fmtBtn">Sx</button>
+      <button type="button" id="alignCenterBtn" class="fmtBtn">Centro</button>
+      <button type="button" id="alignRightBtn" class="fmtBtn">Dx</button>
+    </div>
+
+    <label>Testo in alto</label>
+    <div id="htext" class="editable" contenteditable="true">PHOTO - ORIENTEERING<br>Abbina le fotografie ai punti di controllo e scrivi il numero accanto alla lettera corrispondente.<br>ATTENZIONE: alcune fotografie sono in più per rendere più difficile l'abbinamento.</div>
+
+    <label>Testo in basso (facoltativo)</label>
+    <div id="ftext" class="editable" contenteditable="true"></div>
+
+    <label>Numero foto</label>
+    <input type="number" id="ncount" value="18" min="0" max="80">
+
+    <label>Tipo etichette (per tutti i riquadri — poi puoi cambiarle una per una)</label>
+    <select id="labelScheme">
+      <option value="letters">Lettere (A, B, C…)</option>
+      <option value="letters_it">Lettere italiane (senza J K W X Y)</option>
+      <option value="numbers">Numeri (1, 2, 3…)</option>
+    </select>
+
+    <label>Loghi liberi</label>
+    <button type="button" id="addLogoBtn" style="width:100%;padding:9px;border:1px dashed var(--teal);
+      border-radius:8px;background:transparent;color:var(--teal);font-weight:700;cursor:pointer">
+      + Aggiungi logo
+    </button>
+    <div id="logoLibrary" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+    <div class="note" id="logoLibraryNote">La libreria loghi è vuota — usa il 💾 su un logo per salvarlo qui.</div>
+
+    <div class="badge" id="info">—</div>
+    <div class="note">La griglia foto si ricalcola da sola. I loghi sono liberi: trascinali per spostarli, usa l'angolo in basso a destra per ridimensionarli, la <b>×</b> per toglierli.</div>
+  </div>
+
+  <div class="panel previewArea">
+    <div class="page" id="page">
+      <div class="htext" id="headerText"></div>
+      <div class="grid-area" id="gridArea"></div>
+      <div class="ftext" id="footerText"></div>
+      <div class="logoLayer" id="logoLayer"></div>
+    </div>
+  </div>
+</div>
+<input type="file" id="logoFileInput" accept="image/*,.pdf" style="display:none">
+<input type="file" id="photoFileInput" accept="image/*" style="display:none">
+
+<script src="./lib/pdf-lib-bundle.js"></script>
+<script src="./lib/fontkit.js"></script>
+<script src="./lib/font-manager.js"></script>
+<script src="./pdfjs/pdf.min.js"></script>
+<script>
+if(window.pdfjsLib){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = './pdfjs/pdf.worker.min.js';
+}
+const FORMATS = { A5:[148,210], A4:[210,297], A3:[297,420], A2:[420,594] };
+const MARGIN_MM = 5;    // margine pagina
+const GAP_MM    = 3;    // spazio minimo tra celle
+const TXT_GAP_MM= 4;    // spazio tra testo e griglia
+const LABEL_FRAC = 0.22; // quota della cella riservata alla riga lettera/spazio vuoto
+const CELL_ASPECT = 1.15; // proporzione larghezza/altezza della cella (foto+etichetta), fissa come negli esempi
+
+const $ = id => document.getElementById(id);
+const page = $('page'), headerText = $('headerText'), footerText = $('footerText'),
+      gridArea = $('gridArea'), logoLayer = $('logoLayer'), info = $('info'),
+      previewArea = document.querySelector('.previewArea');
+
+function bestGrid(N, availW, availH, aspect, gap){
+  // Cerca la disposizione (righe×colonne) con la cella più grande possibile
+  // mantenendo sempre la stessa proporzione larghezza/altezza (niente foto deformate).
+  let best = null;
+  for(let cols=1; cols<=N; cols++){
+    const rows = Math.ceil(N/cols);
+    let cellW = (availW - (cols-1)*gap) / cols;
+    let cellH = cellW / aspect;
+    const neededH = rows*cellH + (rows-1)*gap;
+    if(neededH > availH){
+      cellH = (availH - (rows-1)*gap) / rows;
+      cellW = cellH * aspect;
+    }
+    if(cellW <= 0 || cellH <= 0) continue;
+    const area = cellW * cellH;
+    if(!best || area > best.area) best = {cols, rows, cellW, cellH, area};
+  }
+  return best;
+}
+
+const MM_PT = 2.83465; // 1 mm in punti PDF
+
+// Calcola dove disegnare una foto dentro il suo riquadro (pw × ph, in qualsiasi unità:
+// pixel a schermo o pixel di esportazione) tenendo conto di zoom e spostamento (fx, fy).
+// Usata sia per l'anteprima sia per il PDF esportato, così combaciano sempre.
+function computeImagePlacement(pd, pw, ph){
+  const containScale = Math.min(pw/pd.natW, ph/pd.natH);
+  const dispW = pd.natW*containScale*pd.zoom, dispH = pd.natH*containScale*pd.zoom;
+  const oxPx = (pd.fx||0)*pw, oyPx = (pd.fy||0)*ph;
+  return { left: pw/2 + oxPx - dispW/2, top: ph/2 + oyPx - dispH/2, width: dispW, height: dispH };
+}
+
+let currentScale = 1; // usata anche per posizionare i loghi liberi
+let photoData = {};       // indice cella -> immagine (dataURL o link internet)
+let labelOverrides = {};  // indice cella -> etichetta scritta a mano (sovrascrive quella automatica)
+let answerData = {};      // indice cella -> testo scritto nella casella accanto (per preparare le risposte)
+
+const ITA_LETTERS = 'ABCDEFGHILMNOPQRSTUVZ'; // alfabeto italiano, senza J K W X Y
+function generateLabel(i, scheme){
+  if(scheme === 'numbers') return String(i+1);
+  if(scheme === 'letters_it'){
+    const n = ITA_LETTERS.length;
+    const rep = Math.floor(i/n);
+    return ITA_LETTERS[i%n] + (rep>0 ? String(rep) : '');
+  }
+  return String.fromCharCode(65 + (i%26)) + (i>=26 ? Math.floor(i/26) : ''); // lettere A-Z, poi A1, B1...
+}
+let pendingPhotoIndex = null;
+const photoFileInput = $('photoFileInput');
+
+function openPhotoFileFor(i){
+  pendingPhotoIndex = i;
+  photoFileInput.value = '';
+  photoFileInput.click();
+}
+photoFileInput.addEventListener('change', ()=>{
+  const file = photoFileInput.files[0];
+  if(!file || pendingPhotoIndex==null) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{ photoData[pendingPhotoIndex] = {src:reader.result, zoom:null, fx:0, fy:0}; recompute(); };
+  reader.readAsDataURL(file);
+});
+
+// ---- Formattazione testo: font e colore, anche su una sola lettera ----
+try{ document.execCommand('defaultParagraphSeparator', false, 'br'); }catch(e){}
+const htextEl = $('htext'), ftextEl = $('ftext');
+let savedRange = null;
+let activeTextEl = htextEl;
+[htextEl, ftextEl].forEach(el=> el.addEventListener('focus', ()=> activeTextEl = el));
+
+function saveSelection(){
+  const sel = window.getSelection();
+  if(!sel || sel.rangeCount===0) return;
+  const r = sel.getRangeAt(0);
+  if(r.collapsed) return; // niente di selezionato, non sovrascrivere l'ultima selezione buona
+  if(htextEl.contains(r.commonAncestorContainer) || ftextEl.contains(r.commonAncestorContainer)){
+    savedRange = r.cloneRange();
+  }
+}
+// selectionchange funziona sia col mouse che col dito (touch) sul cellulare
+document.addEventListener('selectionchange', saveSelection);
+
+function applyStyleToSelection(prop, value){
+  if(!savedRange){ alert('Prima seleziona una parola o una lettera nel testo.'); return; }
+  const range = savedRange.cloneRange();
+  const span = document.createElement('span');
+  span.style[prop] = value;
+  try{
+    range.surroundContents(span);
+  }catch(e){
+    const frag = range.extractContents();
+    span.appendChild(frag);
+    range.insertNode(span);
+  }
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  const newRange = document.createRange();
+  newRange.selectNodeContents(span);
+  sel.addRange(newRange);
+  savedRange = newRange.cloneRange();
+  recompute();
+}
+
+[htextEl, ftextEl].forEach(el=>{
+  el.addEventListener('input', recompute);
+});
+$('fontSel').addEventListener('change', async ()=>{
+  const value = $('fontSel').value;
+  const slug = FONT_LIB[firstFontName(value)];
+  if(slug) await preloadFamilyForPreview(slug);
+  applyStyleToSelection('fontFamily', value);
+});
+$('colorSel').addEventListener('input', ()=> applyStyleToSelection('color', $('colorSel').value));
+
+function styleAtSelectionStart(prop){
+  if(!savedRange) return '';
+  let node = savedRange.startContainer;
+  if(node.nodeType===3) node = node.parentElement;
+  return node ? getComputedStyle(node)[prop] : '';
+}
+$('boldBtn').addEventListener('click', ()=>{
+  const w = styleAtSelectionStart('fontWeight');
+  const isBold = w==='bold' || parseInt(w,10)>=700;
+  applyStyleToSelection('fontWeight', isBold ? 'normal' : 'bold');
+});
+$('italicBtn').addEventListener('click', ()=>{
+  const isItalic = styleAtSelectionStart('fontStyle')==='italic';
+  applyStyleToSelection('fontStyle', isItalic ? 'normal' : 'italic');
+});
+$('underlineBtn').addEventListener('click', ()=>{
+  const dec = styleAtSelectionStart('textDecorationLine') || styleAtSelectionStart('textDecoration') || '';
+  const isUnderline = dec.includes('underline');
+  applyStyleToSelection('textDecoration', isUnderline ? 'none' : 'underline');
+});
+$('sizeUpBtn').addEventListener('click', ()=> applyStyleToSelection('fontSize', '1.15em'));
+$('sizeDownBtn').addEventListener('click', ()=> applyStyleToSelection('fontSize', '0.87em'));
+
+function setAlign(val){
+  activeTextEl.style.textAlign = val;
+  recompute();
+}
+$('alignLeftBtn').addEventListener('click', ()=> setAlign('left'));
+$('alignCenterBtn').addEventListener('click', ()=> setAlign('center'));
+$('alignRightBtn').addEventListener('click', ()=> setAlign('right'));
+
+// ---- Salvataggio nel browser (IndexedDB): progetti e libreria loghi ----
+const DB_NAME = 'retrofoto_orienteering', DB_VERSION = 1;
+let dbPromise = null;
+function getDB(){
+  if(dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve,reject)=>{
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = ()=>{
+      const db = req.result;
+      if(!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', {keyPath:'name'});
+      if(!db.objectStoreNames.contains('logos'))    db.createObjectStore('logos',    {keyPath:'id'});
+    };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror   = ()=> reject(req.error);
+  });
+  return dbPromise;
+}
+function dbPut(store, value){
+  return getDB().then(db=> new Promise((res,rej)=>{
+    const tx = db.transaction(store,'readwrite');
+    tx.objectStore(store).put(value);
+    tx.oncomplete = ()=>res();
+    tx.onerror = ()=>rej(tx.error);
+  }));
+}
+function dbGet(store, key){
+  return getDB().then(db=> new Promise((res,rej)=>{
+    const tx = db.transaction(store,'readonly');
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = ()=>res(req.result);
+    req.onerror = ()=>rej(req.error);
+  }));
+}
+function dbGetAll(store){
+  return getDB().then(db=> new Promise((res,rej)=>{
+    const tx = db.transaction(store,'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = ()=>res(req.result);
+    req.onerror = ()=>rej(req.error);
+  }));
+}
+function dbDelete(store, key){
+  return getDB().then(db=> new Promise((res,rej)=>{
+    const tx = db.transaction(store,'readwrite');
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = ()=>res();
+    tx.onerror = ()=>rej(tx.error);
+  }));
+}
+
+// -- libreria loghi --
+function renderLogoLibrary(){
+  dbGetAll('logos').then(list=>{
+    const box = $('logoLibrary');
+    box.innerHTML = '';
+    $('logoLibraryNote').style.display = list.length ? 'none' : 'block';
+    list.forEach(item=>{
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:relative;width:44px;height:44px;border:1px solid var(--line);'+
+        'border-radius:6px;overflow:hidden;cursor:pointer;background:var(--bg)';
+      wrap.title = 'Inserisci: ' + item.name;
+      const img = document.createElement('img');
+      img.src = item.src;
+      img.style.cssText = 'width:100%;height:100%;object-fit:contain';
+      wrap.appendChild(img);
+      wrap.addEventListener('click', ()=>{
+        logos.push({id: ++logoSeq, xmm:20, ymm:20, wmm:35, hmm:22, imgSrc:item.src});
+        renderLogos();
+      });
+      const del = document.createElement('div');
+      del.textContent = '×';
+      del.style.cssText = 'position:absolute;top:-6px;right:-6px;width:14px;height:14px;background:#c0392b;'+
+        'color:#fff;border-radius:50%;font-size:10px;line-height:14px;text-align:center';
+      del.addEventListener('click', e=>{ e.stopPropagation(); dbDelete('logos', item.id).then(renderLogoLibrary); });
+      wrap.appendChild(del);
+      box.appendChild(wrap);
+    });
+  });
+}
+
+// -- salva / apri / esporta / importa progetto --
+function serializeProject(){
+  return {
+    name: $('pname').value.trim() || 'Senza nome',
+    pformat: $('pformat').value,
+    porient: $('porient').value,
+    headerHTML: $('htext').innerHTML,
+    footerHTML: $('ftext').innerHTML,
+    ncount: +$('ncount').value || 0,
+    labelScheme: $('labelScheme').value,
+    labelOverrides: labelOverrides,
+    answerData: answerData,
+    photoData: photoData,
+    logos: logos,
+    savedAt: new Date().toISOString()
+  };
+}
+function applyProjectData(data){
+  $('pname').value = data.name || '';
+  $('pformat').value = data.pformat || 'A4';
+  $('porient').value = data.porient || 'v';
+  $('htext').innerHTML = data.headerHTML || '';
+  $('ftext').innerHTML = data.footerHTML || '';
+  $('ncount').value = data.ncount || 0;
+  $('labelScheme').value = data.labelScheme || 'letters';
+  labelOverrides = data.labelOverrides || {};
+  answerData = data.answerData || {};
+  photoData = data.photoData || {};
+  logos = (data.logos || []).map(l=>({...l}));
+  logoSeq = logos.reduce((m,l)=>Math.max(m, l.id||0), 0);
+  recompute();
+}
+function refreshProjectList(){
+  dbGetAll('projects').then(list=>{
+    const sel = $('openProjectSel');
+    sel.innerHTML = '<option value="">📂 Apri…</option>';
+    list.sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
+      const opt = document.createElement('option');
+      opt.value = p.name; opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+  });
+}
+$('saveProjectBtn').addEventListener('click', ()=>{
+  dbPut('projects', serializeProject()).then(()=>{
+    refreshProjectList();
+    const btn = $('saveProjectBtn'), old = btn.textContent;
+    btn.textContent = '✓ Salvato';
+    setTimeout(()=> btn.textContent = old, 1400);
+  });
+});
+$('openProjectSel').addEventListener('change', ()=>{
+  const name = $('openProjectSel').value;
+  if(!name) return;
+  dbGet('projects', name).then(data=>{ if(data) applyProjectData(data); });
+});
+$('deleteProjectBtn').addEventListener('click', ()=>{
+  const name = $('openProjectSel').value;
+  if(!name){ alert('Apri prima un progetto salvato, poi elimina.'); return; }
+  if(!confirm('Eliminare definitivamente "'+name+'"?')) return;
+  dbDelete('projects', name).then(refreshProjectList);
+});
+$('exportProjectLink').addEventListener('click', e=>{
+  e.preventDefault();
+  const data = serializeProject();
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = (data.name||'progetto') + '.retrofoto.json';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+$('importProjectLink').addEventListener('click', e=>{ e.preventDefault(); $('importProjectInput').click(); });
+$('importProjectInput').addEventListener('change', ()=>{
+  const file = $('importProjectInput').files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{ applyProjectData(JSON.parse(reader.result)); }
+    catch(e){ alert('File non valido.'); }
+  };
+  reader.readAsText(file);
+  $('importProjectInput').value = '';
+});
+
+// ================== ESPORTAZIONE PDF ==================
+
+// Legge un'immagine (file locale o link internet) come oggetto Image pronto da disegnare
+function loadImageEl(src){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    if(!src.startsWith('data:')) img.crossOrigin = 'anonymous';
+    img.onload = ()=>resolve(img);
+    img.onerror = ()=>reject(new Error('immagine non raggiungibile'));
+    img.src = src;
+  });
+}
+function dataUrlToBytes(dataUrl){
+  const base64 = dataUrl.split(',')[1];
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+// Ridisegna una foto (con lo stesso ritaglio/zoom scelto nell'anteprima) alla risoluzione
+// di stampa scelta, pronta per essere inserita nel PDF.
+async function prepareImageForExport(pd, boxWmm, boxHmm, dpi){
+  const img = await loadImageEl(pd.src);
+  const merged = {...pd, natW: img.naturalWidth, natH: img.naturalHeight};
+  if(merged.zoom == null) merged.zoom = 1;
+  const wpx = Math.max(1, Math.round(boxWmm/25.4*dpi));
+  const hpx = Math.max(1, Math.round(boxHmm/25.4*dpi));
+  const place = computeImagePlacement(merged, wpx, hpx);
+  const canvas = document.createElement('canvas');
+  canvas.width = wpx; canvas.height = hpx;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, place.left, place.top, place.width, place.height);
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+// Stessa cosa per un logo, ma "contieni tutto" invece di ritagliare (come nell'anteprima)
+async function prepareLogoForExport(lg, dpi){
+  const img = await loadImageEl(lg.imgSrc);
+  const wpx = Math.max(1, Math.round(lg.wmm/25.4*dpi));
+  const hpx = Math.max(1, Math.round(lg.hmm/25.4*dpi));
+  const s = Math.min(wpx/img.naturalWidth, hpx/img.naturalHeight);
+  const dw = img.naturalWidth*s, dh = img.naturalHeight*s;
+  const canvas = document.createElement('canvas');
+  canvas.width = wpx; canvas.height = hpx;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, (wpx-dw)/2, (hpx-dh)/2, dw, dh);
+  return canvas.toDataURL('image/png');
+}
+
+// Sceglie il font PDF standard più vicino al font scelto (i font decorativi non disponibili
+// nel PDF vengono sostituiti con quello standard più simile)
+function mapFontKey(family, bold, italic){
+  const f = (family||'').toLowerCase();
+  let base = 'Helvetica';
+  if(/times|georgia|garamond|palatino|cambria|baskerville|didot|typewriter|copperplate/.test(f)) base='TimesRoman';
+  else if(/courier|consolas/.test(f)) base='Courier';
+  if(base==='Courier')    return bold&&italic?'CourierBoldOblique'   : bold?'CourierBold'   : italic?'CourierOblique'   : 'Courier';
+  if(base==='TimesRoman') return bold&&italic?'TimesRomanBoldItalic': bold?'TimesRomanBold': italic?'TimesRomanItalic': 'TimesRoman';
+  return                        bold&&italic?'HelveticaBoldOblique' : bold?'HelveticaBold' : italic?'HelveticaOblique' : 'Helvetica';
+}
+function parseCssColor(css){
+  const m = (css||'').match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+  return m ? PDFLib.rgb(+m[1]/255, +m[2]/255, +m[3]/255) : PDFLib.rgb(0,0,0);
+}
+// Legge il testo formattato (grassetto/corsivo/colore/font/dimensione) direttamente
+// dall'anteprima già disegnata a schermo, un pezzetto alla volta
+function extractRuns(container){
+  const runs = [];
+  (function walk(node){
+    if(node.nodeType===3){
+      if(node.textContent.length){
+        const cs = getComputedStyle(node.parentElement);
+        runs.push({type:'text', text:node.textContent, color:cs.color, family:cs.fontFamily,
+          bold: parseInt(cs.fontWeight,10)>=700 || cs.fontWeight==='bold',
+          italic: cs.fontStyle==='italic',
+          underline: (cs.textDecorationLine||cs.textDecoration||'').includes('underline'),
+          sizePx: parseFloat(cs.fontSize)});
+      }
+    } else if(node.nodeName==='BR'){ runs.push({type:'break'}); }
+    else { node.childNodes.forEach(walk); }
+  })(container);
+  return runs;
+}
+// Va a capo da solo dentro la larghezza disponibile, parola per parola
+// Font veri (pacchetto condiviso ./fonts/, gestito da FontManager): davvero incorporati
+// nel PDF esportato, non solo mostrati a schermo. Se un font non ha un vero corsivo
+// disegnato (es. i decorativi/manoscritti), FontManager ripiega da solo sul dritto dello
+// stesso peso — mai un corsivo finto.
+const FONT_LIB = {
+  'Cinzel':             'cinzel',
+  'Allura':             'allura',
+  'Abril Fatface':      'abril-fatface',
+  'Playfair Display':   'playfair-display',
+  'Lora':               'lora',
+  'Cormorant Garamond': 'cormorant-garamond',
+  'Open Sans':          'open-sans',
+  'Montserrat':         'montserrat',
+  'Oswald':             'oswald',
+  'PT Serif':           'pt-serif',
+  'Roboto Mono':        'roboto-mono',
+  'Dancing Script':     'dancing-script',
+  'Sacramento':         'sacramento'
+};
+function firstFontName(cssFamily){
+  return (cssFamily||'').split(',')[0].trim().replace(/^["']|["']$/g,'');
+}
+// Carica per l'anteprima a schermo tutti i pesi/stili di un font che esistono davvero
+// (letti dal manifest condiviso), cosicché grassetto/corsivo sull'anteprima mostrino
+// sempre il font vero, non un'approssimazione del browser.
+async function preloadFamilyForPreview(slug){
+  const manifest = await FontManager.loadManifest();
+  const font = manifest.fonts.find(f=>f.id===slug);
+  if(!font) return;
+  const jobs = [];
+  for(const w of font.weights){
+    jobs.push(FontManager.ensurePreviewFace(slug, w, false));
+    if((font.styles||[]).includes('italic')) jobs.push(FontManager.ensurePreviewFace(slug, w, true));
+  }
+  await Promise.all(jobs);
+}
+// All'avvio, precarica tutti i 13 font condivisi: sono piccoli (~1 MB in tutto) e già
+// nella cache del service worker, quindi il costo reale è trascurabile — evita che il
+// primo utilizzo di un font (anche solo passandoci sopra col grassetto) mostri per un
+// istante il font sbagliato.
+Promise.all(Object.values(FONT_LIB).map(preloadFamilyForPreview)).catch(()=>{});
+// Azzerata a ogni esportazione (vedi il pulsante Esporta PDF): i PDFFont incorporati sono
+// legati al singolo PDFDocument in cui sono stati creati e non vanno mai riusati su un
+// PDFDocument diverso creato da un'esportazione successiva.
+let embeddedFontCache = {};
+async function getPdfFontForRun(doc, standardFonts, run, warnings){
+  const family = firstFontName(run.family);
+  const slug = FONT_LIB[family];
+  if(slug){
+    const weight = run.bold ? 700 : 400;
+    const cacheKey = slug+weight+(run.italic?'i':'');
+    if(!(cacheKey in embeddedFontCache)){
+      try{ embeddedFontCache[cacheKey] = await FontManager.embedPackagedFont(doc, slug, weight, run.italic); }
+      catch(e){ embeddedFontCache[cacheKey] = null; }
+    }
+    if(embeddedFontCache[cacheKey]) return embeddedFontCache[cacheKey];
+    if(!warnings.fontWarned){
+      warnings.push('Non sono riuscito a incorporare i font scelti: nel PDF sono stati sostituiti con un font standard simile.');
+      warnings.fontWarned = true;
+    }
+  }
+  return standardFonts[mapFontKey(run.family, run.bold, run.italic)];
+}
+
+async function layoutRuns(runs, maxWidthPt, doc, standardFonts, warnings){
+  const lines = [[]];
+  for(const run of runs){
+    if(run.type==='break'){ lines.push([]); continue; }
+    const sizePt = (run.sizePx/currentScale) * MM_PT;
+    const font = await getPdfFontForRun(doc, standardFonts, run, warnings);
+    const color = parseCssColor(run.color);
+    for(const word of run.text.split(/(\s+)/).filter(s=>s.length)){
+      const width = font.widthOfTextAtSize(word, sizePt);
+      let line = lines[lines.length-1];
+      const used = line.reduce((s,it)=>s+it.width,0);
+      if(used>0 && used+width>maxWidthPt){ lines.push([]); line = lines[lines.length-1]; }
+      line.push({text:word, font, size:sizePt, color, underline:run.underline, width});
+    }
+  }
+  return lines;
+}
+function linesHeightPt(lines){
+  return lines.reduce((s,line)=> s + (Math.max(10, ...line.map(it=>it.size), 0) * 1.3), 0) || 0;
+}
+// Disegna le righe di testo già impaginate, allineate come scelto
+function drawLines(page, lines, xLeft, yTop, align, maxWidthPt){
+  let y = yTop;
+  lines.forEach(line=>{
+    const totalW = line.reduce((s,it)=>s+it.width,0);
+    const maxSize = Math.max(10, ...line.map(it=>it.size), 0);
+    let x = xLeft;
+    if(align==='center') x = xLeft + (maxWidthPt-totalW)/2;
+    if(align==='right')  x = xLeft + (maxWidthPt-totalW);
+    y -= maxSize;
+    line.forEach(it=>{
+      if(it.text.trim()){
+        page.drawText(it.text, {x, y, size:it.size, font:it.font, color:it.color});
+        if(it.underline){
+          page.drawLine({start:{x,y:y-1}, end:{x:x+it.width,y:y-1},
+            thickness:Math.max(0.5,it.size*0.05), color:it.color});
+        }
+      }
+      x += it.width;
+    });
+    y -= maxSize*0.3;
+  });
+}
+
+async function exportPDF(){
+  if(!window.PDFLib){ alert('La libreria per creare il PDF non si è caricata. Controlla la connessione e riprova.'); return; }
+  const btn = $('exportPdfBtn'), oldTxt = btn.textContent;
+  btn.textContent = '⏳ Creo il PDF…'; btn.disabled = true;
+  const warnings = [];
+  try{
+    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+    const dpi = +$('exportDpi').value || 300;
+
+    let [w,h] = FORMATS[$('pformat').value];
+    if($('porient').value==='o'){ [w,h]=[h,w]; }
+    const PW = w*MM_PT, PH = h*MM_PT;
+
+    const doc = await PDFDocument.create();
+    if(window.fontkit) doc.registerFontkit(window.fontkit);
+    embeddedFontCache = {}; // nuovo PDFDocument: i PDFFont di un export precedente non sono validi qui
+    const page = doc.addPage([PW, PH]);
+    const fonts = {};
+    for(const key of ['Helvetica','HelveticaBold','HelveticaOblique','HelveticaBoldOblique',
+                       'TimesRoman','TimesRomanBold','TimesRomanItalic','TimesRomanBoldItalic',
+                       'Courier','CourierBold','CourierOblique','CourierBoldOblique']){
+      fonts[key] = await doc.embedFont(StandardFonts[key]);
+    }
+
+    const marginPt = MARGIN_MM*MM_PT;
+    const maxWidthPt = (w - 2*MARGIN_MM)*MM_PT;
+
+    const headerLines = htextEl.textContent.trim() ? await layoutRuns(extractRuns(headerText), maxWidthPt, doc, fonts, warnings) : [];
+    const footerLines = ftextEl.textContent.trim() ? await layoutRuns(extractRuns(footerText), maxWidthPt, doc, fonts, warnings) : [];
+    const headerHpt = linesHeightPt(headerLines);
+    const footerHpt = linesHeightPt(footerLines);
+
+    drawLines(page, headerLines, marginPt, PH-marginPt, getComputedStyle(headerText).textAlign, maxWidthPt);
+    drawLines(page, footerLines, marginPt, marginPt+footerHpt, getComputedStyle(footerText).textAlign, maxWidthPt);
+
+    const availWmm = w - 2*MARGIN_MM;
+    const availHmm = h - 2*MARGIN_MM - (headerHpt/MM_PT) - (footerHpt/MM_PT)
+                      - (headerLines.length?TXT_GAP_MM:0) - (footerLines.length?TXT_GAP_MM:0);
+    const nFoto = Math.max(0, +$('ncount').value||0);
+    const N = Math.max(1, nFoto);
+    const g = bestGrid(N, availWmm, availHmm, CELL_ASPECT, GAP_MM);
+
+    if(g && availHmm>0){
+      const hLeftMm = Math.max(0, availWmm - g.cols*g.cellW);
+      const vLeftMm = Math.max(0, availHmm - g.rows*g.cellH);
+      const hGapMm = g.cols>1 ? hLeftMm/(g.cols-1) : 0;
+      const vGapMm = g.rows>1 ? vLeftMm/(g.rows-1) : 0;
+      const gridTopMm = MARGIN_MM + (headerHpt/MM_PT) + (headerLines.length?TXT_GAP_MM:0);
+      const labelHmm = g.cellH*LABEL_FRAC, photoHmm = g.cellH - labelHmm;
+      const lf = fonts.HelveticaBold;
+
+      for(let i=0;i<N;i++){
+        const col = i % g.cols, row = Math.floor(i/g.cols);
+        const cellXmm = MARGIN_MM + col*(g.cellW+hGapMm);
+        const cellYmm = gridTopMm + row*(g.cellH+vGapMm); // dall'alto pagina
+
+        const pd = photoData[i];
+        if(pd){
+          try{
+            const dataUrl = await prepareImageForExport(pd, g.cellW, photoHmm, dpi);
+            const embedded = await doc.embedJpg(dataUrlToBytes(dataUrl));
+            page.drawImage(embedded, {
+              x: cellXmm*MM_PT, y: PH-(cellYmm+photoHmm)*MM_PT,
+              width: g.cellW*MM_PT, height: photoHmm*MM_PT});
+          }catch(e){
+            warnings.push('Foto nel riquadro "'+((labelOverrides[i]!==undefined)?labelOverrides[i]:generateLabel(i,$('labelScheme').value))+'" non inclusa (link non raggiungibile).');
+          }
+        }
+
+        const labelYmm = cellYmm + photoHmm;
+        const boxXPt = cellXmm*MM_PT, boxYPt = PH-(labelYmm+labelHmm)*MM_PT;
+        const halfW = g.cellW*MM_PT/2, boxHPt = labelHmm*MM_PT;
+        page.drawRectangle({x:boxXPt, y:boxYPt, width:g.cellW*MM_PT, height:boxHPt,
+          borderColor:rgb(0.78,0.81,0.84), borderWidth:0.75});
+        page.drawLine({start:{x:boxXPt+halfW,y:boxYPt}, end:{x:boxXPt+halfW,y:boxYPt+boxHPt},
+          color:rgb(0.78,0.81,0.84), thickness:0.75});
+
+        const labelTxt = (labelOverrides[i]!==undefined)?labelOverrides[i]:generateLabel(i,$('labelScheme').value);
+        const answerTxt = answerData[i]||'';
+        const fs = Math.max(7, boxHPt*0.42);
+        if(labelTxt){
+          const tw = lf.widthOfTextAtSize(labelTxt, fs);
+          page.drawText(labelTxt, {x:boxXPt+(halfW-tw)/2, y:boxYPt+(boxHPt-fs)/2+fs*0.15, size:fs, font:lf, color:rgb(0.27,0.27,0.27)});
+        }
+        if(answerTxt){
+          const tw = lf.widthOfTextAtSize(answerTxt, fs);
+          page.drawText(answerTxt, {x:boxXPt+halfW+(halfW-tw)/2, y:boxYPt+(boxHPt-fs)/2+fs*0.15, size:fs, font:lf, color:rgb(0.75,0.22,0.17)});
+        }
+      }
+    } else {
+      warnings.push('La griglia non entra nello spazio disponibile: nel PDF le foto potrebbero mancare.');
+    }
+
+    for(const lg of logos){
+      if(!lg.imgSrc) continue;
+      try{
+        const dataUrl = await prepareLogoForExport(lg, dpi);
+        const embedded = await doc.embedPng(dataUrlToBytes(dataUrl));
+        page.drawImage(embedded, {x: lg.xmm*MM_PT, y: PH-(lg.ymm+lg.hmm)*MM_PT, width: lg.wmm*MM_PT, height: lg.hmm*MM_PT});
+      }catch(e){
+        warnings.push('Un logo non è stato incluso (file non leggibile).');
+      }
+    }
+
+    const pdfBytes = await doc.save();
+    const blob = new Blob([pdfBytes], {type:'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = ($('pname').value.trim()||'progetto') + '.pdf';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    if(warnings.length) alert('PDF creato, con qualche avviso:\n\n' + warnings.join('\n'));
+  }catch(e){
+    console.error(e);
+    alert('Non sono riuscito a creare il PDF: ' + e.message);
+  }finally{
+    btn.textContent = oldTxt; btn.disabled = false;
+  }
+}
+$('exportPdfBtn').addEventListener('click', exportPDF);
+
+function recompute(){
+  let [w,h] = FORMATS[$('pformat').value];
+  if($('porient').value === 'o'){ [w,h] = [h,w]; }
+
+  const availPx = Math.max(260, previewArea.clientWidth - 24);
+  const scale = Math.min(availPx / w, 760 / h);
+  currentScale = scale;
+
+  page.style.width  = (w*scale) + 'px';
+  page.style.height = (h*scale) + 'px';
+
+  const marginPx = MARGIN_MM*scale, txtGapPx = TXT_GAP_MM*scale;
+
+  // testo in alto
+  const ht = $('htext').textContent.trim();
+  headerText.style.top = marginPx + 'px';
+  headerText.style.left = marginPx + 'px';
+  headerText.style.width = (w - 2*MARGIN_MM)*scale + 'px';
+  headerText.style.fontSize = Math.max(9, 4.2*scale) + 'px';
+  headerText.style.lineHeight = 1.3;
+  headerText.innerHTML = $('htext').innerHTML;
+  headerText.style.textAlign = getComputedStyle(htextEl).textAlign;
+  const headerHpx = ht ? headerText.offsetHeight : 0;
+
+  // testo in basso
+  const ft = $('ftext').textContent.trim();
+  footerText.style.bottom = marginPx + 'px';
+  footerText.style.left = marginPx + 'px';
+  footerText.style.width = (w - 2*MARGIN_MM)*scale + 'px';
+  footerText.style.fontSize = Math.max(9, 4.2*scale) + 'px';
+  footerText.style.lineHeight = 1.3;
+  footerText.innerHTML = $('ftext').innerHTML;
+  footerText.style.textAlign = getComputedStyle(ftextEl).textAlign;
+  const footerHpx = ft ? footerText.offsetHeight : 0;
+
+  const availWmm = w - 2*MARGIN_MM;
+  const headerHmm = headerHpx/scale, footerHmm = footerHpx/scale;
+  const availHmm = h - 2*MARGIN_MM - headerHmm - footerHmm
+                    - (ht?TXT_GAP_MM:0) - (ft?TXT_GAP_MM:0);
+
+  const nFoto = Math.max(0, +$('ncount').value || 0);
+  const N = Math.max(1, nFoto);
+  const g = bestGrid(N, availWmm, availHmm, CELL_ASPECT, GAP_MM);
+
+  const gridTopPx = marginPx + headerHpx + (ht?txtGapPx:0);
+  gridArea.style.top = gridTopPx + 'px';
+  gridArea.style.left = marginPx + 'px';
+  gridArea.style.width = availWmm*scale + 'px';
+  gridArea.style.height = Math.max(0, availHmm)*scale + 'px';
+
+  if(g && availHmm > 0){
+    const hLeftMm = Math.max(0, availWmm - g.cols*g.cellW);
+    const vLeftMm = Math.max(0, availHmm - g.rows*g.cellH);
+    const hGapPx = (g.cols>1 ? hLeftMm/(g.cols-1) : 0) * scale;
+    const vGapPx = (g.rows>1 ? vLeftMm/(g.rows-1) : 0) * scale;
+    const cellWpx = g.cellW*scale, cellHpx = g.cellH*scale;
+    gridArea.style.width  = (g.cols*cellWpx + (g.cols-1)*hGapPx) + 'px';
+    gridArea.style.height = (g.rows*cellHpx + (g.rows-1)*vGapPx) + 'px';
+    gridArea.style.columnGap = hGapPx + 'px';
+    gridArea.style.rowGap = vGapPx + 'px';
+    gridArea.innerHTML = '';
+    const labelHpx = cellHpx*LABEL_FRAC;
+    const labelFont = Math.max(9, labelHpx*0.42);
+    for(let i=0;i<N;i++){
+      const d = document.createElement('div');
+      d.className = 'cell';
+      d.style.width = cellWpx + 'px';
+      d.style.height = cellHpx + 'px';
+
+      const photo = document.createElement('div');
+      photo.className = 'photo';
+      const pd = photoData[i];
+      if(pd){
+        const img = document.createElement('img');
+        img.onerror = ()=>{ delete photoData[i]; recompute(); };
+        photo.appendChild(img);
+
+        function layoutImg(){
+          if(!pd.natW) return; // dimensioni non ancora note (immagine non ancora caricata)
+          const pw = photo.clientWidth, ph = photo.clientHeight;
+          const place = computeImagePlacement(pd, pw, ph);
+          img.style.position = 'absolute';
+          img.style.left = place.left + 'px';
+          img.style.top  = place.top + 'px';
+          img.style.width  = place.width + 'px';
+          img.style.height = place.height + 'px';
+          img.style.transform = '';
+        }
+        img.onload = ()=>{
+          pd.natW = img.naturalWidth; pd.natH = img.naturalHeight;
+          if(pd.zoom == null){
+            const pw = photo.clientWidth, ph = photo.clientHeight;
+            const containScale = Math.min(pw/pd.natW, ph/pd.natH);
+            const coverScale = Math.max(pw/pd.natW, ph/pd.natH);
+            pd.zoom = coverScale/containScale; // di default parte "piena" come prima, ma si può tornare indietro
+          }
+          layoutImg();
+        };
+        img.src = pd.src;
+
+        // trascina per spostare l'inquadratura (memorizzato come % della cella, non in pixel:
+        // così resta corretto anche cambiando formato pagina o qualità di esportazione)
+        img.addEventListener('pointerdown', e=>{
+          e.preventDefault();
+          const sx=e.clientX, sy=e.clientY, fx0=pd.fx||0, fy0=pd.fy||0;
+          const pw = photo.clientWidth, ph = photo.clientHeight;
+          function move(ev){
+            pd.fx = fx0 + (ev.clientX-sx)/pw;
+            pd.fy = fy0 + (ev.clientY-sy)/ph;
+            layoutImg();
+          }
+          function up(){ document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); }
+          document.addEventListener('pointermove',move);
+          document.addEventListener('pointerup',up);
+        });
+
+        // sostituisci foto (dal computer)
+        const swap = document.createElement('div');
+        swap.className = 'cellSwap'; swap.textContent = '⟳'; swap.title = 'Sostituisci foto';
+        swap.addEventListener('pointerdown', e=>e.stopPropagation());
+        swap.addEventListener('click', e=>{ e.stopPropagation(); openPhotoFileFor(i); });
+        photo.appendChild(swap);
+
+        // zoom avanti / indietro — indietro arriva fino a vedere tutta la foto (zoom 1 = niente tagli)
+        const zin = document.createElement('div'); zin.className='zoomBtn zin'; zin.textContent='+'; zin.title='Ingrandisci';
+        const zout = document.createElement('div'); zout.className='zoomBtn zout'; zout.textContent='−'; zout.title='Riduci';
+        [zin,zout].forEach(b=>b.addEventListener('pointerdown', e=>e.stopPropagation()));
+        zin.addEventListener('click', e=>{ e.stopPropagation(); pd.zoom = Math.min(6, pd.zoom*1.2); layoutImg(); });
+        zout.addEventListener('click', e=>{ e.stopPropagation(); pd.zoom = Math.max(1, pd.zoom/1.2); layoutImg(); });
+        photo.appendChild(zin);
+        photo.appendChild(zout);
+      } else {
+        photo.addEventListener('click', ()=> openPhotoFileFor(i));
+      }
+
+      const glob = document.createElement('div');
+      glob.className = 'photoUrlBtn';
+      glob.textContent = '🌐';
+      glob.title = 'Carica da un indirizzo Internet';
+      glob.addEventListener('pointerdown', e=>e.stopPropagation());
+      glob.addEventListener('click', e=>{
+        e.stopPropagation();
+        const url = prompt('Incolla il link (URL) della foto:');
+        if(url && url.trim()){ photoData[i] = {src:url.trim(), zoom:null, fx:0, fy:0}; recompute(); }
+      });
+      photo.appendChild(glob);
+      d.appendChild(photo);
+
+      const labelrow = document.createElement('div');
+      labelrow.className = 'labelrow';
+      labelrow.style.height = labelHpx + 'px';
+      labelrow.style.fontSize = labelFont + 'px';
+
+      const lbl = document.createElement('div');
+      lbl.className = 'lbl';
+      lbl.contentEditable = 'true';
+      lbl.textContent = (labelOverrides[i] !== undefined) ? labelOverrides[i] : generateLabel(i, $('labelScheme').value);
+      lbl.addEventListener('input', ()=>{ labelOverrides[i] = lbl.textContent; });
+      lbl.addEventListener('click', e=>e.stopPropagation());
+
+      const lbl2 = document.createElement('div');
+      lbl2.className = 'lbl2';
+      lbl2.contentEditable = 'true';
+      lbl2.textContent = answerData[i] || '';
+      lbl2.addEventListener('input', ()=>{ answerData[i] = lbl2.textContent; });
+      lbl2.addEventListener('click', e=>e.stopPropagation());
+
+      labelrow.appendChild(lbl);
+      labelrow.appendChild(lbl2);
+      d.appendChild(labelrow);
+
+      gridArea.appendChild(d);
+    }
+    info.innerHTML = `<b>Griglia automatica:</b> ${g.cols} × ${g.rows} (${N} foto)<br>`+
+      `<b>Cella:</b> ${g.cellW.toFixed(0)} × ${g.cellH.toFixed(0)} mm<br>`+
+      `<b>Testo alto:</b> ${headerHmm.toFixed(0)} mm — <b>basso:</b> ${footerHmm.toFixed(0)} mm`;
+  } else {
+    gridArea.innerHTML = '';
+    info.textContent = 'Non resta spazio per la griglia: riduci il testo o scegli un formato più grande.';
+  }
+  renderLogos();
+}
+
+// ---- Loghi liberi: si aggiungono, si trascinano, si ridimensionano ----
+let logos = [];
+let logoSeq = 0;
+
+function addLogo(){
+  logos.push({ id: ++logoSeq, xmm: 20, ymm: 20, wmm: 35, hmm: 22, imgSrc:null });
+  renderLogos();
+}
+
+let pendingLogoId = null;
+const fileInput = $('logoFileInput');
+
+function openFileFor(id){
+  pendingLogoId = id;
+  fileInput.value = '';
+  fileInput.click();
+}
+
+fileInput.addEventListener('change', ()=>{
+  const file = fileInput.files[0];
+  if(!file || pendingLogoId==null) return;
+  loadFileIntoLogo(pendingLogoId, file);
+});
+
+function loadFileIntoLogo(id, file){
+  if(file.type === 'application/pdf'){
+    if(!window.pdfjsLib){ alert('Anteprima PDF non disponibile in questa pagina di prova.'); return; }
+    file.arrayBuffer()
+      .then(buf => pdfjsLib.getDocument({data:buf}).promise)
+      .then(pdf => pdf.getPage(1))
+      .then(page => {
+        const vp = page.getViewport({scale:2});
+        const canvas = document.createElement('canvas');
+        canvas.width = vp.width; canvas.height = vp.height;
+        return page.render({canvasContext:canvas.getContext('2d'), viewport:vp}).promise
+          .then(()=>canvas.toDataURL('image/png'));
+      })
+      .then(dataUrl => setLogoImage(id, dataUrl))
+      .catch(()=> alert('Non riesco a leggere questo PDF.'));
+  } else {
+    const reader = new FileReader();
+    reader.onload = ()=> setLogoImage(id, reader.result);
+    reader.readAsDataURL(file);
+  }
+}
+
+function setLogoImage(id, dataUrl){
+  const lg = logos.find(x=>x.id===id);
+  if(lg){ lg.imgSrc = dataUrl; renderLogos(); }
+}
+
+function renderLogos(){
+  logoLayer.innerHTML = '';
+  logos.forEach(lg=>{
+    const box = document.createElement('div');
+    box.className = 'logoBox';
+    box.style.left   = (lg.xmm*currentScale) + 'px';
+    box.style.top    = (lg.ymm*currentScale) + 'px';
+    box.style.width  = (lg.wmm*currentScale) + 'px';
+    box.style.height = (lg.hmm*currentScale) + 'px';
+
+    if(lg.imgSrc){
+      const img = document.createElement('img');
+      img.src = lg.imgSrc;
+      box.appendChild(img);
+
+      const swap = document.createElement('div');
+      swap.className = 'swap'; swap.textContent = '⟳'; swap.title = 'Sostituisci file';
+      swap.addEventListener('pointerdown', e=>e.stopPropagation());
+      swap.addEventListener('click', ()=> openFileFor(lg.id));
+      box.appendChild(swap);
+
+      const saveLib = document.createElement('div');
+      saveLib.className = 'saveLib'; saveLib.textContent = '💾'; saveLib.title = 'Salva nella libreria loghi';
+      saveLib.addEventListener('pointerdown', e=>e.stopPropagation());
+      saveLib.addEventListener('click', ()=>{
+        const name = prompt('Nome per questo logo (es. "Logo OService"):', 'Logo');
+        if(!name) return;
+        dbPut('logos', {id: Date.now(), name, src: lg.imgSrc}).then(renderLogoLibrary);
+      });
+      box.appendChild(saveLib);
+    } else {
+      box.textContent = '📁 Carica logo\n(JPG, PNG, PDF...)';
+      box.style.whiteSpace = 'pre-line';
+      box.addEventListener('click', ()=> openFileFor(lg.id));
+    }
+
+    const del = document.createElement('div');
+    del.className = 'del'; del.textContent = '×';
+    del.addEventListener('pointerdown', e=>e.stopPropagation());
+    del.addEventListener('click', ()=>{ logos = logos.filter(x=>x.id!==lg.id); renderLogos(); });
+    box.appendChild(del);
+
+    const rs = document.createElement('div');
+    rs.className = 'resize';
+    box.appendChild(rs);
+
+    // trascinamento
+    box.addEventListener('pointerdown', e=>{
+      if(e.target===rs || e.target===del) return;
+      e.preventDefault();
+      const startX=e.clientX, startY=e.clientY, ox=lg.xmm, oy=lg.ymm;
+      function move(ev){
+        lg.xmm = ox + (ev.clientX-startX)/currentScale;
+        lg.ymm = oy + (ev.clientY-startY)/currentScale;
+        box.style.left = (lg.xmm*currentScale)+'px';
+        box.style.top  = (lg.ymm*currentScale)+'px';
+      }
+      function up(){ document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); }
+      document.addEventListener('pointermove',move);
+      document.addEventListener('pointerup',up);
+    });
+
+    // ridimensionamento
+    rs.addEventListener('pointerdown', e=>{
+      e.preventDefault(); e.stopPropagation();
+      const startX=e.clientX, startY=e.clientY, ow=lg.wmm, oh=lg.hmm;
+      function move(ev){
+        lg.wmm = Math.max(8, ow + (ev.clientX-startX)/currentScale);
+        lg.hmm = Math.max(8, oh + (ev.clientY-startY)/currentScale);
+        box.style.width  = (lg.wmm*currentScale)+'px';
+        box.style.height = (lg.hmm*currentScale)+'px';
+      }
+      function up(){ document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); }
+      document.addEventListener('pointermove',move);
+      document.addEventListener('pointerup',up);
+    });
+
+    logoLayer.appendChild(box);
+  });
+}
+
+$('addLogoBtn').addEventListener('click', addLogo);
+
+['pname','pformat','porient','ncount','labelScheme'].forEach(id=>{
+  $(id).addEventListener('input', recompute);
+  $(id).addEventListener('change', recompute);
+});
+let resizeTimer;
+window.addEventListener('resize', ()=>{
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(recompute, 200);
+});
+recompute();
+renderLogoLibrary();
+refreshProjectList();
+</script>
+
+</body>
+</html>
