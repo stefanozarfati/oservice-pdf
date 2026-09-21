@@ -86,6 +86,7 @@ textarea{width:100%;min-height:96px;border:1px solid #cfd4dc;border-radius:8px;p
       <button class="addbtn" id="adddeco">＋ Separatore</button>
       <button class="addbtn" id="addlogofld">＋ Logo</button>
       <button class="addbtn" id="addfont">＋ Font</button>
+      <button class="addbtn" id="addsysfont" style="display:none">🖥️ Font del Mac</button>
     </div>
     <input type="file" id="logofile" accept="image/*" multiple style="display:none">
     <input type="file" id="fontfile" accept=".ttf,.otf,.woff,.woff2,font/*" multiple style="display:none">
@@ -274,7 +275,27 @@ $('#fontfile').onchange=async(e)=>{
   }
   e.target.value='';renderFontList();renderFields();renderOverlay();
 };
-function renderFontList(){const el=$('#fontlist');if(!el)return;const custom=Object.keys(FONTS).filter(k=>!FONTS[k].packaged&&!FONTS[k].std).reverse();el.innerHTML=custom.length?('Font caricati: '+custom.map(k=>`<span class="chip">${k}<button data-k="${k}">✕</button></span>`).join(' ')):'';el.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.dataset.k;delete FONTS[k];delete FONTBYTES[k];FIELDS.forEach(f=>{if(f.font===k)f.font='Cinzel';});renderFontList();renderFields();renderOverlay();});}
+// Font veri installati sul computer (solo Chrome/Edge desktop, con permesso dell'utente):
+// il pulsante compare da solo se il browser supporta l'API, resta nascosto altrove (Safari,
+// Firefox, cellulari) dove non potrebbe comunque funzionare. Una volta scelto, se ne
+// estraggono i byte veri e si tratta esattamente come un font caricato da file: stessa
+// incorporazione nel PDF, stesso salvataggio/ripristino del progetto, senza dover
+// richiedere di nuovo il permesso a ogni riapertura.
+if(FontManager.systemFontsSupported())$('#addsysfont').style.display='';
+$('#addsysfont').onclick=async()=>{
+  const picked=await FontManager.pickSystemFont();
+  if(!picked)return;
+  const variant=FontManager.bestSystemVariant(picked.variants,false,false);
+  const blob=await variant.blob();
+  const bytes=new Uint8Array(await blob.arrayBuffer());
+  let key=picked.family;
+  if(FONTS[key])key=key+' (Mac)';
+  FONTBYTES[key]=bytes;
+  FONTS[key]={css:"'"+picked.family+"',sans-serif",custom:true,bytesKey:key,system:true};
+  try{const ab=_ab(bytes);const ff=new FontFace(picked.family,ab);await ff.load();document.fonts.add(ff);}catch(err){console.warn('font di sistema',key,err);}
+  renderFontList();renderFields();renderOverlay();
+};
+function renderFontList(){const el=$('#fontlist');if(!el)return;const custom=Object.keys(FONTS).filter(k=>!FONTS[k].packaged&&!FONTS[k].std).reverse();el.innerHTML=custom.length?('Font caricati: '+custom.map(k=>`<span class="chip">${FONTS[k].system?'🖥️ ':''}${k}<button data-k="${k}">✕</button></span>`).join(' ')):'';el.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.dataset.k;delete FONTS[k];delete FONTBYTES[k];FIELDS.forEach(f=>{if(f.font===k)f.font='Cinzel';});renderFontList();renderFields();renderOverlay();});}
 // ---- LOGO ----
 $('#addlogofld').onclick=()=>{if(LOGOS.length){const nf={id:nextId++,kind:'logo',label:'Logo',logoId:LOGOS[0].id,w:18,x:20,y:42};FIELDS.unshift(nf);sel=nf.id;renderFields();renderOverlay();}else{pendingNewLogoField=true;$('#logofile').click();}};
 $('#logofile').onchange=async(e)=>{
@@ -515,8 +536,7 @@ function setCurrentProjectLabel(name){
   try{ if(name) localStorage.setItem('oservice-current-project', name); else localStorage.removeItem('oservice-current-project'); }catch(_){}
 }
 async function saveProject(name){
-  const baseF=['Cinzel','Allura','Helvetica','Helvetica-Bold','Times'];
-  const fonts=Object.keys(FONTS).filter(k=>!baseF.includes(k)).map(k=>({key:k,bytes:_ab(FONTBYTES[k])}));
+  const fonts=Object.keys(FONTS).filter(k=>!FONTS[k].packaged&&!FONTS[k].std).map(k=>({key:k,bytes:_ab(FONTBYTES[k]),system:!!FONTS[k].system}));
   const logos=LOGOS.map(L=>({id:L.id,name:L.name,mime:L.mime,bytes:_ab(L.bytes)}));
   const base=BASE?{kind:BASE.kind,mime:BASE.mime,bytes:_ab(BASE.bytes)}:null;
   await idbPut({name,savedAt:Date.now(),fields:JSON.parse(JSON.stringify(FIELDS)),lay:LAY,base,logos,fonts,counters:{nextId,nextLogo,nextFont}});
@@ -532,7 +552,7 @@ async function loadProject(name){
   nextLogo=(rec.counters&&rec.counters.nextLogo)||1; nextFont=(rec.counters&&rec.counters.nextFont)||1;
   LOGOS=(rec.logos||[]).map(L=>{const u8=new Uint8Array(L.bytes);return {id:L.id,name:L.name,mime:L.mime,bytes:u8,url:URL.createObjectURL(new Blob([u8],{type:L.mime}))};});
   if(LOGOS.length)nextLogo=Math.max(nextLogo,Math.max(...LOGOS.map(l=>l.id))+1);
-  for(const F of (rec.fonts||[])){const u8=new Uint8Array(F.bytes);FONTBYTES[F.key]=u8;FONTS[F.key]={css:"'"+F.key+"',serif",custom:true,bytesKey:F.key};try{const ff=new FontFace(F.key,_ab(u8));await ff.load();document.fonts.add(ff);}catch(e){}}
+  for(const F of (rec.fonts||[])){const u8=new Uint8Array(F.bytes);FONTBYTES[F.key]=u8;FONTS[F.key]={css:"'"+F.key+"',serif",custom:true,bytesKey:F.key,system:!!F.system};try{const ff=new FontFace(F.key,_ab(u8));await ff.load();document.fonts.add(ff);}catch(e){}}
   if(rec.base){const u8=new Uint8Array(rec.base.bytes);BASE={kind:rec.base.kind,mime:rec.base.mime,bytes:u8};
     if(rec.base.kind==='pdf'){try{const doc=await pdfjsLib.getDocument({data:u8.slice()}).promise;const page=await doc.getPage(1);const vp0=page.getViewport({scale:1});const sc=Math.min(2200/vp0.width,3);const vp=page.getViewport({scale:sc});const cv=document.createElement('canvas');cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;$('#baseimg').src=cv.toDataURL('image/png');$('#baseimg').alt='';$('#stage').style.aspectRatio=(vp.width/vp.height).toFixed(4);}catch(e){$('#baseimg').src='';}}
     else{BASE.url=URL.createObjectURL(new Blob([u8],{type:rec.base.mime}));$('#baseimg').src=BASE.url;$('#baseimg').alt='';}
