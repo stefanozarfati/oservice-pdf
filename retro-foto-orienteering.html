@@ -194,6 +194,7 @@ textarea{min-height:56px;resize:vertical;line-height:1.35}
         style="width:100%;height:38px;padding:2px;border:1px solid var(--line);
         border-radius:8px;background:var(--bg);cursor:pointer">
     </div>
+    <button type="button" id="addSysFontBtn" class="fmtBtn" style="display:none;width:100%;margin-top:8px">🖥️ Usa un font del computer…</button>
     <div class="row2" style="grid-template-columns:repeat(5,1fr);margin-top:8px">
       <button type="button" id="boldBtn" class="fmtBtn" style="font-weight:800">B</button>
       <button type="button" id="italicBtn" class="fmtBtn" style="font-style:italic">I</button>
@@ -222,6 +223,38 @@ textarea{min-height:56px;resize:vertical;line-height:1.35}
       <option value="letters_it">Lettere italiane (senza J K W X Y)</option>
       <option value="numbers">Numeri (1, 2, 3…)</option>
     </select>
+
+    <label>Font delle lettere/numeri nei riquadri</label>
+    <select id="labelFontSel">
+      <option value="">Predefinito (Helvetica grassetto)</option>
+      <optgroup label="Bastone">
+        <option value="'Open Sans', sans-serif">Open Sans</option>
+        <option value="Montserrat, sans-serif">Montserrat</option>
+        <option value="Oswald, sans-serif">Oswald (condensato)</option>
+      </optgroup>
+      <optgroup label="Graziato">
+        <option value="Lora, serif">Lora</option>
+        <option value="'PT Serif', serif">PT Serif</option>
+        <option value="'Playfair Display', serif">Playfair Display</option>
+        <option value="'Cormorant Garamond', serif">Cormorant Garamond</option>
+      </optgroup>
+      <optgroup label="Decorativo">
+        <option value="Cinzel, serif">Cinzel</option>
+        <option value="'Abril Fatface', serif">Abril Fatface</option>
+      </optgroup>
+      <optgroup label="Manoscritto">
+        <option value="Allura, cursive">Allura</option>
+        <option value="'Dancing Script', cursive">Dancing Script</option>
+        <option value="Sacramento, cursive">Sacramento</option>
+      </optgroup>
+      <optgroup label="Monospace">
+        <option value="'Roboto Mono', monospace">Roboto Mono</option>
+      </optgroup>
+    </select>
+    <button type="button" id="addSysLabelFontBtn" class="fmtBtn" style="display:none;width:100%;margin-top:6px">🖥️ Usa un font del computer…</button>
+
+    <label>Dimensione lettere/numeri: <span id="labelSizeReadout">automatica</span></label>
+    <input type="range" id="labelSizeSlider" min="60" max="200" value="100" step="5" style="width:100%">
 
     <label>Loghi liberi</label>
     <button type="button" id="addLogoBtn" style="width:100%;padding:9px;border:1px dashed var(--teal);
@@ -381,6 +414,55 @@ $('fontSel').addEventListener('change', async ()=>{
 });
 $('colorSel').addEventListener('input', ()=> applyStyleToSelection('color', $('colorSel').value));
 
+// Font veri installati sul computer (solo Chrome/Edge desktop, con permesso dell'utente):
+// il pulsante compare da solo se il browser supporta l'API. Una volta scelta una famiglia,
+// diventa una voce in più nel menu font, coi suoi pesi/stili veri caricati per l'anteprima;
+// in esportazione getPdfFontForRun la incorpora per davvero (vedi SYSTEM_FONTS più sotto).
+function systemVariantDescriptors(styleStr){
+  const s = (styleStr||'').toLowerCase();
+  return { weight: /bold|semibold|black|heavy/.test(s) ? '700' : '400', italic: /italic|oblique/.test(s) };
+}
+if(FontManager.systemFontsSupported())$('addSysFontBtn').style.display='';
+$('addSysFontBtn').addEventListener('click', async ()=>{
+  const picked = await FontManager.pickSystemFont();
+  if(!picked) return;
+  SYSTEM_FONTS[picked.family] = picked.variants;
+  await Promise.all(picked.variants.map(v=>{
+    const d = systemVariantDescriptors(v.style);
+    return FontManager.ensureSystemPreviewFace(v, d.weight, d.italic).catch(()=>{});
+  }));
+  const cssValue = "'"+picked.family+"', sans-serif";
+  if(!Array.from($('fontSel').options).some(o=>o.value===cssValue)){
+    const opt = document.createElement('option');
+    opt.value = cssValue; opt.textContent = '🖥️ '+picked.family;
+    $('fontSel').appendChild(opt);
+  }
+  $('fontSel').value = cssValue;
+  applyStyleToSelection('fontFamily', cssValue);
+});
+
+if(FontManager.systemFontsSupported())$('addSysLabelFontBtn').style.display='';
+$('addSysLabelFontBtn').addEventListener('click', async ()=>{
+  const picked = await FontManager.pickSystemFont();
+  if(!picked) return;
+  SYSTEM_FONTS[picked.family] = picked.variants;
+  const regular = FontManager.bestSystemVariant(picked.variants, false, false);
+  await FontManager.ensureSystemPreviewFace(regular, 400, false).catch(()=>{});
+  const cssValue = "'"+picked.family+"', sans-serif";
+  if(!Array.from($('labelFontSel').options).some(o=>o.value===cssValue)){
+    const opt = document.createElement('option');
+    opt.value = cssValue; opt.textContent = '🖥️ '+picked.family;
+    $('labelFontSel').appendChild(opt);
+  }
+  $('labelFontSel').value = cssValue;
+  recompute();
+});
+
+function updateLabelSizeReadout(){
+  $('labelSizeReadout').textContent = ($('labelSizeSlider').value==100) ? 'automatica' : ($('labelSizeSlider').value+'%');
+}
+$('labelSizeSlider').addEventListener('input', updateLabelSizeReadout);
+
 function styleAtSelectionStart(prop){
   if(!savedRange) return '';
   let node = savedRange.startContainer;
@@ -502,6 +584,8 @@ function serializeProject(){
     footerHTML: $('ftext').innerHTML,
     ncount: +$('ncount').value || 0,
     labelScheme: $('labelScheme').value,
+    labelFont: $('labelFontSel').value,
+    labelSizePct: +$('labelSizeSlider').value || 100,
     labelOverrides: labelOverrides,
     answerData: answerData,
     photoData: photoData,
@@ -517,6 +601,9 @@ function applyProjectData(data){
   $('ftext').innerHTML = data.footerHTML || '';
   $('ncount').value = data.ncount || 0;
   $('labelScheme').value = data.labelScheme || 'letters';
+  $('labelFontSel').value = data.labelFont || '';
+  $('labelSizeSlider').value = data.labelSizePct || 100;
+  updateLabelSizeReadout();
   labelOverrides = data.labelOverrides || {};
   answerData = data.answerData || {};
   photoData = data.photoData || {};
@@ -701,6 +788,11 @@ async function preloadFamilyForPreview(slug){
 // primo utilizzo di un font (anche solo passandoci sopra col grassetto) mostri per un
 // istante il font sbagliato.
 Promise.all(Object.values(FONT_LIB).map(preloadFamilyForPreview)).catch(()=>{});
+// Font veri installati sul computer, aggiunti dall'utente in questa sessione (solo
+// Chrome/Edge desktop): { nomeFamiglia: [FontData, ...] }. Non persistono nel progetto
+// salvato — se il progetto viene riaperto senza il font ancora selezionato in sessione,
+// il testo torna al font standard più vicino con un avviso, mai un errore.
+const SYSTEM_FONTS = {};
 // Azzerata a ogni esportazione (vedi il pulsante Esporta PDF): i PDFFont incorporati sono
 // legati al singolo PDFDocument in cui sono stati creati e non vanno mai riusati su un
 // PDFDocument diverso creato da un'esportazione successiva.
@@ -713,6 +805,20 @@ async function getPdfFontForRun(doc, standardFonts, run, warnings){
     const cacheKey = slug+weight+(run.italic?'i':'');
     if(!(cacheKey in embeddedFontCache)){
       try{ embeddedFontCache[cacheKey] = await FontManager.embedPackagedFont(doc, slug, weight, run.italic); }
+      catch(e){ embeddedFontCache[cacheKey] = null; }
+    }
+    if(embeddedFontCache[cacheKey]) return embeddedFontCache[cacheKey];
+    if(!warnings.fontWarned){
+      warnings.push('Non sono riuscito a incorporare i font scelti: nel PDF sono stati sostituiti con un font standard simile.');
+      warnings.fontWarned = true;
+    }
+    return standardFonts[mapFontKey(run.family, run.bold, run.italic)];
+  }
+  const variants = SYSTEM_FONTS[family];
+  if(variants){
+    const cacheKey = 'sys:'+family+(run.bold?'b':'')+(run.italic?'i':'');
+    if(!(cacheKey in embeddedFontCache)){
+      try{ embeddedFontCache[cacheKey] = await FontManager.embedSystemFont(doc, FontManager.bestSystemVariant(variants, run.bold, run.italic)); }
       catch(e){ embeddedFontCache[cacheKey] = null; }
     }
     if(embeddedFontCache[cacheKey]) return embeddedFontCache[cacheKey];
@@ -817,7 +923,11 @@ async function exportPDF(){
       const vGapMm = g.rows>1 ? vLeftMm/(g.rows-1) : 0;
       const gridTopMm = MARGIN_MM + (headerHpt/MM_PT) + (headerLines.length?TXT_GAP_MM:0);
       const labelHmm = g.cellH*LABEL_FRAC, photoHmm = g.cellH - labelHmm;
-      const lf = fonts.HelveticaBold;
+      const labelFontValue = $('labelFontSel').value;
+      const lf = labelFontValue
+        ? await getPdfFontForRun(doc, fonts, {family:labelFontValue, bold:false, italic:false}, warnings)
+        : fonts.HelveticaBold;
+      const labelSizePct = +$('labelSizeSlider').value || 100;
 
       for(let i=0;i<N;i++){
         const col = i % g.cols, row = Math.floor(i/g.cols);
@@ -847,7 +957,7 @@ async function exportPDF(){
 
         const labelTxt = (labelOverrides[i]!==undefined)?labelOverrides[i]:generateLabel(i,$('labelScheme').value);
         const answerTxt = answerData[i]||'';
-        const fs = Math.max(7, boxHPt*0.42);
+        const fs = Math.max(7, boxHPt*0.42*(labelSizePct/100));
         if(labelTxt){
           const tw = lf.widthOfTextAtSize(labelTxt, fs);
           page.drawText(labelTxt, {x:boxXPt+(halfW-tw)/2, y:boxYPt+(boxHPt-fs)/2+fs*0.15, size:fs, font:lf, color:rgb(0.27,0.27,0.27)});
@@ -952,7 +1062,9 @@ function recompute(){
     gridArea.style.rowGap = vGapPx + 'px';
     gridArea.innerHTML = '';
     const labelHpx = cellHpx*LABEL_FRAC;
-    const labelFont = Math.max(9, labelHpx*0.42);
+    const labelSizePct = +$('labelSizeSlider').value || 100;
+    const labelFont = Math.max(9, labelHpx*0.42*(labelSizePct/100));
+    const labelFontFamily = $('labelFontSel').value || '';
     for(let i=0;i<N;i++){
       const d = document.createElement('div');
       d.className = 'cell';
@@ -1042,6 +1154,7 @@ function recompute(){
       labelrow.className = 'labelrow';
       labelrow.style.height = labelHpx + 'px';
       labelrow.style.fontSize = labelFont + 'px';
+      if(labelFontFamily) labelrow.style.fontFamily = labelFontFamily;
 
       const lbl = document.createElement('div');
       lbl.className = 'lbl';
@@ -1207,7 +1320,7 @@ function renderLogos(){
 
 $('addLogoBtn').addEventListener('click', addLogo);
 
-['pname','pformat','porient','ncount','labelScheme'].forEach(id=>{
+['pname','pformat','porient','ncount','labelScheme','labelFontSel','labelSizeSlider'].forEach(id=>{
   $(id).addEventListener('input', recompute);
   $(id).addEventListener('change', recompute);
 });
