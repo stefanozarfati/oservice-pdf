@@ -352,21 +352,12 @@ function generateLabel(i, scheme){
 // per tutti gli altri formati (jpg, png, webp, gif, bmp...) non fa nulla, passa il file così com'è.
 async function fileToImageDataUrl(file){
   let srcFile = file;
-  console.log('[HEIC-debug] file selezionato:', file.name, '| tipo:', file.type, '| dimensione:', file.size, 'byte');
   if(typeof HeicTo !== 'undefined'){
-    console.log('[HEIC-debug] libreria HeicTo caricata correttamente');
     try{
-      const heic = await HeicTo.isHeic(file);
-      console.log('[HEIC-debug] HeicTo.isHeic() ha risposto:', heic);
-      if(heic){
+      if(await HeicTo.isHeic(file)){
         srcFile = await HeicTo({ blob:file, type:'image/jpeg', quality:0.92 });
-        console.log('[HEIC-debug] conversione a JPEG riuscita, nuova dimensione:', srcFile.size, 'byte');
       }
-    }catch(e){
-      console.error('[HEIC-debug] conversione FALLITA con questo errore:', e);
-    }
-  } else {
-    console.warn('[HEIC-debug] HeicTo NON è definito: lib/heic-to.js non si è caricato');
+    }catch(e){ /* se la rilevazione/conversione fallisce, si prova comunque col file originale */ }
   }
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
@@ -389,8 +380,8 @@ photoFileInput.addEventListener('change', ()=>{
   if(!file || pendingPhotoIndex==null) return;
   const idx = pendingPhotoIndex;
   fileToImageDataUrl(file)
-    .then(dataUrl => { console.log('[HEIC-debug] immagine pronta, lunghezza dataURL:', dataUrl.length); photoData[idx] = {src:dataUrl, zoom:null, fx:0, fy:0}; recompute(); })
-    .catch((e)=>{ console.error('[HEIC-debug] fileToImageDataUrl fallita:', e); alert('Non riesco a leggere questa immagine.'); });
+    .then(dataUrl => { photoData[idx] = {src:dataUrl, zoom:null, fx:0, fy:0}; recompute(); })
+    .catch(()=> alert('Non riesco a leggere questa immagine.'));
 });
 
 // ---- Formattazione testo: font e colore, anche su una sola lettera ----
@@ -1106,7 +1097,7 @@ function recompute(){
       const pd = photoData[i];
       if(pd){
         const img = document.createElement('img');
-        img.onerror = ()=>{ console.error('[HEIC-debug] il browser NON riesce a decodificare questa immagine (src inizia con):', pd.src.slice(0,30)); delete photoData[i]; recompute(); };
+        img.onerror = ()=>{ delete photoData[i]; recompute(); };
         photo.appendChild(img);
 
         function layoutImg(){
