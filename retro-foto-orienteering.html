@@ -446,6 +446,7 @@ function systemVariantDescriptors(styleStr){
 if(FontManager.systemFontsSupported())$('addSysFontBtn').style.display='';
 $('addSysFontBtn').addEventListener('click', async ()=>{
   const picked = await FontManager.pickSystemFont();
+  if(picked==='denied'){ alert('Chrome non ha dato il permesso di leggere i font del computer.\nControlla nell\'icona del lucchetto/impostazioni del sito che "Fonts" sia consentito, poi riprova.'); return; }
   if(!picked) return;
   SYSTEM_FONTS[picked.family] = picked.variants;
   await Promise.all(picked.variants.map(v=>{
@@ -465,6 +466,7 @@ $('addSysFontBtn').addEventListener('click', async ()=>{
 if(FontManager.systemFontsSupported())$('addSysLabelFontBtn').style.display='';
 $('addSysLabelFontBtn').addEventListener('click', async ()=>{
   const picked = await FontManager.pickSystemFont();
+  if(picked==='denied'){ alert('Chrome non ha dato il permesso di leggere i font del computer.\nControlla nell\'icona del lucchetto/impostazioni del sito che "Fonts" sia consentito, poi riprova.'); return; }
   if(!picked) return;
   SYSTEM_FONTS[picked.family] = picked.variants;
   const regular = FontManager.bestSystemVariant(picked.variants, false, false);
