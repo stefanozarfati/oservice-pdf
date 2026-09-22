@@ -284,6 +284,7 @@ $('#fontfile').onchange=async(e)=>{
 if(FontManager.systemFontsSupported())$('#addsysfont').style.display='';
 $('#addsysfont').onclick=async()=>{
   const picked=await FontManager.pickSystemFont();
+  if(picked==='denied'){ alert('Chrome non ha dato il permesso di leggere i font del computer.\nControlla nell\'icona del lucchetto/impostazioni del sito che "Fonts" sia consentito, poi riprova.'); return; }
   if(!picked)return;
   const variant=FontManager.bestSystemVariant(picked.variants,false,false);
   const blob=await variant.blob();
