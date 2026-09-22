@@ -12,8 +12,8 @@
         "normal"
       ],
       "files": {
-        "400": "fonts/cinzel/cinzel-400.woff2",
-        "700": "fonts/cinzel/cinzel-700.woff2"
+        "400": "fonts/cinzel/cinzel-400.ttf",
+        "700": "fonts/cinzel/cinzel-700.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/cinzel/LICENSE.txt",
@@ -30,7 +30,7 @@
         "normal"
       ],
       "files": {
-        "400": "fonts/allura/allura-400.woff2"
+        "400": "fonts/allura/allura-400.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/allura/LICENSE.txt",
@@ -47,7 +47,7 @@
         "normal"
       ],
       "files": {
-        "400": "fonts/abril-fatface/abril-fatface-400.woff2"
+        "400": "fonts/abril-fatface/abril-fatface-400.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/abril-fatface/LICENSE.txt",
@@ -66,10 +66,10 @@
         "italic"
       ],
       "files": {
-        "400": "fonts/playfair-display/playfair-display-400.woff2",
-        "700": "fonts/playfair-display/playfair-display-700.woff2",
-        "400i": "fonts/playfair-display/playfair-display-400i.woff2",
-        "700i": "fonts/playfair-display/playfair-display-700i.woff2"
+        "400": "fonts/playfair-display/playfair-display-400.ttf",
+        "700": "fonts/playfair-display/playfair-display-700.ttf",
+        "400i": "fonts/playfair-display/playfair-display-400i.ttf",
+        "700i": "fonts/playfair-display/playfair-display-700i.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/playfair-display/LICENSE.txt",
@@ -88,10 +88,10 @@
         "italic"
       ],
       "files": {
-        "400": "fonts/lora/lora-400.woff2",
-        "700": "fonts/lora/lora-700.woff2",
-        "400i": "fonts/lora/lora-400i.woff2",
-        "700i": "fonts/lora/lora-700i.woff2"
+        "400": "fonts/lora/lora-400.ttf",
+        "700": "fonts/lora/lora-700.ttf",
+        "400i": "fonts/lora/lora-400i.ttf",
+        "700i": "fonts/lora/lora-700i.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/lora/LICENSE.txt",
@@ -110,10 +110,10 @@
         "italic"
       ],
       "files": {
-        "400": "fonts/cormorant-garamond/cormorant-garamond-400.woff2",
-        "700": "fonts/cormorant-garamond/cormorant-garamond-700.woff2",
-        "400i": "fonts/cormorant-garamond/cormorant-garamond-400i.woff2",
-        "700i": "fonts/cormorant-garamond/cormorant-garamond-700i.woff2"
+        "400": "fonts/cormorant-garamond/cormorant-garamond-400.ttf",
+        "700": "fonts/cormorant-garamond/cormorant-garamond-700.ttf",
+        "400i": "fonts/cormorant-garamond/cormorant-garamond-400i.ttf",
+        "700i": "fonts/cormorant-garamond/cormorant-garamond-700i.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/cormorant-garamond/LICENSE.txt",
@@ -132,10 +132,10 @@
         "italic"
       ],
       "files": {
-        "400": "fonts/pt-serif/pt-serif-400.woff2",
-        "700": "fonts/pt-serif/pt-serif-700.woff2",
-        "400i": "fonts/pt-serif/pt-serif-400i.woff2",
-        "700i": "fonts/pt-serif/pt-serif-700i.woff2"
+        "400": "fonts/pt-serif/pt-serif-400.ttf",
+        "700": "fonts/pt-serif/pt-serif-700.ttf",
+        "400i": "fonts/pt-serif/pt-serif-400i.ttf",
+        "700i": "fonts/pt-serif/pt-serif-700i.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/pt-serif/LICENSE.txt",
@@ -154,10 +154,10 @@
         "italic"
       ],
       "files": {
-        "400": "fonts/open-sans/open-sans-400.woff2",
-        "700": "fonts/open-sans/open-sans-700.woff2",
-        "400i": "fonts/open-sans/open-sans-400i.woff2",
-        "700i": "fonts/open-sans/open-sans-700i.woff2"
+        "400": "fonts/open-sans/open-sans-400.ttf",
+        "700": "fonts/open-sans/open-sans-700.ttf",
+        "400i": "fonts/open-sans/open-sans-400i.ttf",
+        "700i": "fonts/open-sans/open-sans-700i.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/open-sans/LICENSE.txt",
@@ -176,10 +176,10 @@
         "italic"
       ],
       "files": {
-        "400": "fonts/montserrat/montserrat-400.woff2",
-        "700": "fonts/montserrat/montserrat-700.woff2",
-        "400i": "fonts/montserrat/montserrat-400i.woff2",
-        "700i": "fonts/montserrat/montserrat-700i.woff2"
+        "400": "fonts/montserrat/montserrat-400.ttf",
+        "700": "fonts/montserrat/montserrat-700.ttf",
+        "400i": "fonts/montserrat/montserrat-400i.ttf",
+        "700i": "fonts/montserrat/montserrat-700i.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/montserrat/LICENSE.txt",
@@ -197,8 +197,8 @@
         "normal"
       ],
       "files": {
-        "400": "fonts/oswald/oswald-400.woff2",
-        "700": "fonts/oswald/oswald-700.woff2"
+        "400": "fonts/oswald/oswald-400.ttf",
+        "700": "fonts/oswald/oswald-700.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/oswald/LICENSE.txt",
@@ -217,10 +217,10 @@
         "italic"
       ],
       "files": {
-        "400": "fonts/roboto-mono/roboto-mono-400.woff2",
-        "700": "fonts/roboto-mono/roboto-mono-700.woff2",
-        "400i": "fonts/roboto-mono/roboto-mono-400i.woff2",
-        "700i": "fonts/roboto-mono/roboto-mono-700i.woff2"
+        "400": "fonts/roboto-mono/roboto-mono-400.ttf",
+        "700": "fonts/roboto-mono/roboto-mono-700.ttf",
+        "400i": "fonts/roboto-mono/roboto-mono-400i.ttf",
+        "700i": "fonts/roboto-mono/roboto-mono-700i.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/roboto-mono/LICENSE.txt",
@@ -238,8 +238,8 @@
         "normal"
       ],
       "files": {
-        "400": "fonts/dancing-script/dancing-script-400.woff2",
-        "700": "fonts/dancing-script/dancing-script-700.woff2"
+        "400": "fonts/dancing-script/dancing-script-400.ttf",
+        "700": "fonts/dancing-script/dancing-script-700.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/dancing-script/LICENSE.txt",
@@ -256,7 +256,7 @@
         "normal"
       ],
       "files": {
-        "400": "fonts/sacramento/sacramento-400.woff2"
+        "400": "fonts/sacramento/sacramento-400.ttf"
       },
       "license": "OFL-1.1",
       "licenseFile": "fonts/sacramento/LICENSE.txt",
