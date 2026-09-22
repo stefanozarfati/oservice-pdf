@@ -1,4 +1,4 @@
-const CACHE='oservice-suite-v30';
+const CACHE='oservice-suite-v31';
 const ASSETS=[
   './','./index.html','./attestati.html','./impaginatore.html','./comprimi.html','./classifiche.html','./retro-foto-orienteering.html','./manifest.json',
   './gs/gs.js',  // gs.wasm (~15MB) NON in precache: cache-first al primo uso
@@ -40,14 +40,16 @@ self.addEventListener('fetch',e=>{
     // network-first: quando online prende sempre la versione aggiornata; offline ripiega sulla cache
     e.respondWith(
       fetch(e.request).then(resp=>{
-        const cp=resp.clone();caches.open(CACHE).then(c=>{try{c.put(e.request,cp);}catch(_){}});return resp;
+        if(resp.ok){const cp=resp.clone();caches.open(CACHE).then(c=>{try{c.put(e.request,cp);}catch(_){}});}
+        return resp;
       }).catch(()=>caches.match(e.request).then(r=>r||caches.match('./index.html')))
     );
   } else {
     // cache-first per i file statici pesanti (tesseract, pdfjs, librerie, icone)
     e.respondWith(
       caches.match(e.request).then(r=>r||fetch(e.request).then(resp=>{
-        const cp=resp.clone();caches.open(CACHE).then(c=>{try{c.put(e.request,cp);}catch(_){}});return resp;
+        if(resp.ok){const cp=resp.clone();caches.open(CACHE).then(c=>{try{c.put(e.request,cp);}catch(_){}});}
+        return resp;
       }).catch(()=>r))
     );
   }
