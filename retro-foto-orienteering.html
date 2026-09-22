@@ -277,13 +277,14 @@ textarea{min-height:56px;resize:vertical;line-height:1.35}
     </div>
   </div>
 </div>
-<input type="file" id="logoFileInput" accept="image/*,.pdf" style="display:none">
-<input type="file" id="photoFileInput" accept="image/*" style="display:none">
+<input type="file" id="logoFileInput" accept="image/*,.heic,.heif,.pdf" style="display:none">
+<input type="file" id="photoFileInput" accept="image/*,.heic,.heif" style="display:none">
 
 <script src="./lib/pdf-lib-bundle.js"></script>
 <script src="./lib/fontkit.js"></script>
 <script src="./lib/font-manager.js"></script>
 <script src="./pdfjs/pdf.min.js"></script>
+<script src="./lib/heic-to.js"></script>
 <script>
 if(window.pdfjsLib){
   pdfjsLib.GlobalWorkerOptions.workerSrc = './pdfjs/pdf.worker.min.js';
@@ -347,6 +348,25 @@ function generateLabel(i, scheme){
   }
   return String.fromCharCode(65 + (i%26)) + (i>=26 ? Math.floor(i/26) : ''); // lettere A-Z, poi A1, B1...
 }
+// Converte in JPEG i file HEIC/HEIF (i browser, tranne Safari, non li sanno leggere);
+// per tutti gli altri formati (jpg, png, webp, gif, bmp...) non fa nulla, passa il file così com'è.
+async function fileToImageDataUrl(file){
+  let srcFile = file;
+  if(typeof HeicTo !== 'undefined'){
+    try{
+      if(await HeicTo.isHeic(file)){
+        srcFile = await HeicTo({ blob:file, type:'image/jpeg', quality:0.92 });
+      }
+    }catch(e){ /* se la rilevazione/conversione fallisce, si prova comunque col file originale */ }
+  }
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result);
+    reader.onerror = ()=> reject(new Error('lettura file fallita'));
+    reader.readAsDataURL(srcFile);
+  });
+}
+
 let pendingPhotoIndex = null;
 const photoFileInput = $('photoFileInput');
 
@@ -358,9 +378,10 @@ function openPhotoFileFor(i){
 photoFileInput.addEventListener('change', ()=>{
   const file = photoFileInput.files[0];
   if(!file || pendingPhotoIndex==null) return;
-  const reader = new FileReader();
-  reader.onload = ()=>{ photoData[pendingPhotoIndex] = {src:reader.result, zoom:null, fx:0, fy:0}; recompute(); };
-  reader.readAsDataURL(file);
+  const idx = pendingPhotoIndex;
+  fileToImageDataUrl(file)
+    .then(dataUrl => { photoData[idx] = {src:dataUrl, zoom:null, fx:0, fy:0}; recompute(); })
+    .catch(()=> alert('Non riesco a leggere questa immagine.'));
 });
 
 // ---- Formattazione testo: font e colore, anche su una sola lettera ----
@@ -1226,9 +1247,9 @@ function loadFileIntoLogo(id, file){
       .then(dataUrl => setLogoImage(id, dataUrl))
       .catch(()=> alert('Non riesco a leggere questo PDF.'));
   } else {
-    const reader = new FileReader();
-    reader.onload = ()=> setLogoImage(id, reader.result);
-    reader.readAsDataURL(file);
+    fileToImageDataUrl(file)
+      .then(dataUrl => setLogoImage(id, dataUrl))
+      .catch(()=> alert('Non riesco a leggere questa immagine.'));
   }
 }
 
