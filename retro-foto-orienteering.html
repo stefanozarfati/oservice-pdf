@@ -949,10 +949,15 @@ async function exportPDF(){
         ? await getPdfFontForRun(doc, fonts, {family:labelFontValue, bold:false, italic:false}, warnings)
         : fonts.HelveticaBold;
       const labelSizePct = +$('labelSizeSlider').value || 100;
+      const cellsInLastRow = N - g.cols*(g.rows-1); // celle davvero presenti nell'ultima riga
 
       for(let i=0;i<N;i++){
         const col = i % g.cols, row = Math.floor(i/g.cols);
-        const cellXmm = MARGIN_MM + col*(g.cellW+hGapMm);
+        let cellXmm = MARGIN_MM + col*(g.cellW+hGapMm);
+        if(row === g.rows-1 && cellsInLastRow < g.cols){
+          // ultima riga incompleta: la centro, come fa già la griglia a schermo (flex justify-content:center)
+          cellXmm += ((g.cols - cellsInLastRow) * (g.cellW+hGapMm)) / 2;
+        }
         const cellYmm = gridTopMm + row*(g.cellH+vGapMm); // dall'alto pagina
 
         const pd = photoData[i];
