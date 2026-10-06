@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Modifica PDF · OService PDF Suite</title>
 <script src="./lib/pdf-lib-bundle.js"></script>
+<script src="./lib/fontkit.js"></script>
+<script src="./lib/font-manager.js"></script>
 <style>
 :root{--navy:#062A63;--orange:#F36A01;--rose:#BE185D;--bg:#f4f5f7;--line:#e2e5ea;--ink:#1f2733;--muted:#6b7280;--ok:#2F7D4F;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
 *{box-sizing:border-box}html,body{margin:0}
@@ -87,7 +89,7 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
     <p>oppure tocca per sceglierlo dal dispositivo</p>
     <input type="file" id="fileInput" accept="application/pdf" hidden>
   </div>
-  <div class="kept">Prima versione: <b>sposta, elimina e sostituisci foto</b>. La modifica dei testi arriverà in una fase successiva.</div>
+  <div class="kept"><b>Sposta, ridimensiona, elimina, sostituisci foto, aggiungi foto e testi</b>. La modifica dei testi già presenti arriverà in una fase successiva.</div>
 </div>
 
 <div id="editor" hidden>
@@ -106,14 +108,10 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
       <button class="btn" id="zIn" title="Ingrandisci">+</button>
     </div>
     <div class="grp">
-      <span class="lbl">Selezione:</span>
-      <button class="btn on" id="modeObj" title="Clic su un singolo oggetto">Oggetto</button>
-      <button class="btn" id="modeCtl" title="Clic su un cerchio di controllo: seleziona cerchio, puntino e numero">Controllo</button>
-    </div>
-    <div class="grp">
       <button class="btn danger" id="btnDel" disabled>Elimina</button>
       <button class="btn" id="btnAddPhoto" title="Aggiungi una foto (JPEG, PNG, HEIC) e clicca dove metterla">Aggiungi foto&hellip;</button>
       <input type="file" id="addPhotoFile" accept="image/jpeg,image/png,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif" hidden>
+      <button class="btn" id="btnAddText" title="Aggiungi un testo e clicca dove metterlo">Aggiungi testo&hellip;</button>
       <button class="btn" id="btnPhoto" disabled>Sostituisci foto&hellip;</button>
       <button class="btn" id="btnUndo" disabled title="Annulla (Ctrl+Z)">Annulla</button>
     </div>
@@ -148,8 +146,7 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
       </div>
       <h3>Come si usa</h3>
       <div class="help">
-        <b>Oggetto</b>: clic su una parte della pagina; trascinala per spostarla. <kbd>Maiusc</kbd>+clic aggiunge o toglie oggetti.<br><br>
-        <b>Controllo</b>: clic su un cerchio di un percorso per prendere insieme cerchio, puntino, numero e alone, senza i simboli di mappa sotto.<br><br>
+        Clic su una parte della pagina per sceglierla; trascinala per spostarla. <kbd>Maiusc</kbd>+clic aggiunge o toglie oggetti. Un secondo clic nello stesso punto sceglie l'oggetto sotto.<br><br>
         <kbd>Canc</kbd> elimina, <kbd>Ctrl</kbd>+<kbd>Z</kbd> annulla, <kbd>Esc</kbd> deseleziona.
       </div>
     </aside>
@@ -168,6 +165,26 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
     <div class="row">
       <button class="btn" id="photoCancel">Annulla</button>
       <button class="btn primary" id="photoOk" disabled>Sostituisci</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="textDlg">
+  <div class="dlg">
+    <h2>Aggiungi testo</h2>
+    <p>Il testo resta testo (selezionabile) e il font viene incorporato nel PDF. Per i font tuoi: importali dalla pagina <b>Font</b> della Home.</p>
+    <textarea id="txtVal" rows="3" style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:8px;padding:8px;font-size:15px;font-family:inherit" placeholder="Scrivi qui il testo (Invio = nuova riga)"></textarea>
+    <div class="step" style="margin-top:10px"><label for="txtFont" style="min-width:48px">Font</label><select id="txtFont" style="flex:1;border:1.5px solid var(--line);border-radius:8px;padding:6px;font-size:13px"></select></div>
+    <div class="step" style="margin-top:8px;gap:14px;flex-wrap:wrap">
+      <label class="step"><input type="checkbox" id="txtBold" style="width:auto"> Grassetto</label>
+      <label class="step"><input type="checkbox" id="txtItalic" style="width:auto"> Corsivo</label>
+      <label class="step">Corpo <input id="txtSize" type="number" min="1" max="500" step="1" value="14" style="width:64px"> pt</label>
+      <label class="step">Colore <input id="txtColor" type="color" value="#000000" style="width:44px;height:30px;padding:0;border:1.5px solid var(--line);border-radius:6px"></label>
+    </div>
+    <div class="info" id="txtSample" style="font-family:var(--mono);min-height:34px;white-space:pre-wrap;font-size:18px">Anteprima</div>
+    <div class="row">
+      <button class="btn" id="txtCancel">Annulla</button>
+      <button class="btn primary" id="txtOk" disabled>Poi clicca sulla pagina</button>
     </div>
   </div>
 </dialog>
@@ -553,17 +570,18 @@ const hx = (u, k) => (k === 'l' ? u.l : k === 'r' ? u.r : (u.l + u.r) / 2), hy =
 const opposite = (k) => (k === 'l' ? 'r' : k === 'r' ? 'l' : k);
 const opposite2 = (k) => (k === 'b' ? 't' : k === 't' ? 'b' : k);
 function handlePos(u, h) { return page2dev(hx(u, h[0]), hy(u, h[1])); }
-const handlesOk = () => { if (!S.sel.length) return false; const R = rectToDev(selUnion()), m = Math.max(22, ov.width / 60); return R.w >= m || R.h >= m; };   // oggetti minuscoli: niente maniglie (si usano le caselle in mm)
+const handlesOk = () => { if (!S.sel.length) return false; const R = rectToDev(selUnion()), m = Math.max(28, ov.width / 60); return R.w >= m || R.h >= m; };   // oggetti minuscoli: niente maniglie (si usano le caselle in mm)
+const hRadius = () => { const R = rectToDev(selUnion()); return Math.max(4, Math.min(Math.max(8, ov.width / 130), Math.max(R.w, R.h) / 8)); };   // zona di presa: si restringe sugli oggetti piccoli, così resta spazio per afferrarli e spostarli
 function drawHandles() {
   if (!handlesOk()) return;
-  const u = selUnion(), sz = Math.max(5, ov.width / 190);
+  const u = selUnion(), sz = Math.min(Math.max(5, ov.width / 190), hRadius() * 2);
   octx.save(); octx.setLineDash([]); octx.lineWidth = Math.max(1, ov.width / 900) * 1.4; octx.strokeStyle = ACCENT; octx.fillStyle = '#fff';
   for (const h of HND) { const [x, y] = handlePos(u, h); octx.fillRect(x - sz / 2, y - sz / 2, sz, sz); octx.strokeRect(x - sz / 2, y - sz / 2, sz, sz); }
   octx.restore();
 }
 function handleAt(dx, dy) {                              // maniglia sotto il puntatore (coordinate dispositivo)
   if (!handlesOk()) return null;
-  const u = selUnion(), r = Math.max(8, ov.width / 130);
+  const u = selUnion(), r = hRadius();
   for (const h of HND) { const [x, y] = handlePos(u, h); if (Math.abs(dx - x) <= r && Math.abs(dy - y) <= r) return h; }
   return null;
 }
@@ -686,7 +704,7 @@ ov.addEventListener('pointerdown', (e) => {
   if (!S.page || (e.pointerType === 'mouse' && e.button !== 0)) return;
   const [dx, dy] = eventDev(e);
   if (S.pending) { const [qx, qy] = dev2page(dx, dy); e.preventDefault(); placePending(qx, qy); return; }
-  const hnd = handleAt(dx, dy);
+  const hnd = e.altKey ? null : handleAt(dx, dy);
   if (hnd) {
     const u = selUnion();
     S.rz = { h: hnd, u: { ...u }, id: e.pointerId, ax: hx(u, opposite(hnd[0])), ay: hy(u, opposite2(hnd[1])), sx: 1, sy: 1 };
@@ -773,8 +791,6 @@ $('dimW').addEventListener('change', () => applyDim('w'));
 $('dimH').addEventListener('change', () => applyDim('h'));
 
 /* ---------- barra strumenti ---------- */
-$('modeObj').addEventListener('click', () => { S.mode = 'obj'; $('modeObj').classList.add('on'); $('modeCtl').classList.remove('on'); });
-$('modeCtl').addEventListener('click', () => { S.mode = 'ctl'; $('modeCtl').classList.add('on'); $('modeObj').classList.remove('on'); });
 $('btnDel').addEventListener('click', () => { try { deleteSelection(); } catch (err) { setStatus(err.message, 'err'); } });
 $('btnUndo').addEventListener('click', () => undo().catch((err) => setStatus(err.message, 'err')));
 $('pgPrev').addEventListener('click', () => openPage(S.pageIndex - 1, false));
@@ -881,6 +897,7 @@ $('addPhotoFile').addEventListener('change', async () => {
 });
 async function placePending(px, py) {
   const P = S.pending; S.pending = null; ov.style.cursor = S.sel.length ? 'move' : 'crosshair';
+  if (P.text) return placeText(P.text, px, py);
   try {
     const o = P.info.orient >= 5 ? { w: P.info.h, h: P.info.w } : { w: P.info.w, h: P.info.h };      // dimensioni come si vede la foto
     const W = Math.min(60 * MM, S.pw * 0.4), H = W * o.h / o.w;
@@ -892,6 +909,80 @@ async function placePending(px, py) {
     drawOverlay(); updateGlobalUI();
     setStatus('Foto aggiunta' + (P.converted ? ' (HEIC convertita in JPEG)' : '') + '. Trascinala, ridimensionala con le maniglie o con le caselle in mm. Ctrl+Z per annullare.', 'ok');
   } catch (err) { setStatus('Aggiunta non riuscita: ' + err.message, 'err'); }
+}
+
+/* ---------- aggiungere un testo nuovo ---------- */
+const textDlg = $('textDlg');
+const STD = { Helvetica: ['Helvetica', 'HelveticaBold', 'HelveticaOblique', 'HelveticaBoldOblique'], Times: ['TimesRoman', 'TimesRomanBold', 'TimesRomanItalic', 'TimesRomanBoldItalic'], Courier: ['Courier', 'CourierBold', 'CourierOblique', 'CourierBoldOblique'] };
+const STD_CSS = { Helvetica: 'Arial,Helvetica,sans-serif', Times: "'Times New Roman',Times,serif", Courier: "'Courier New',monospace" };
+let textFonts = null;                    // { id -> voce del manifest }
+async function fillTextFonts() {
+  const sel = $('txtFont'), keep = sel.value; sel.innerHTML = ''; textFonts = {};
+  const grp = (label, items) => { if (!items.length) return; const g = document.createElement('optgroup'); g.label = label; items.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; g.appendChild(o); }); sel.appendChild(g); };
+  grp('Standard (leggeri)', Object.keys(STD).map((k) => ['std:' + k, k]));
+  try {
+    const m = await FontManager.loadManifest();
+    m.fonts.forEach((f) => { textFonts[f.id] = f; });
+    grp('Font della Suite', m.fonts.filter((f) => !f.pool).map((f) => [f.id, f.name]));
+    grp('Personali (importati)', m.fonts.filter((f) => f.pool).map((f) => [f.id, f.name]));
+  } catch (e) { console.warn('font', e); }
+  if (keep && [...sel.options].some((o) => o.value === keep)) sel.value = keep;
+}
+function fontCaps(v) {                      // quali stili esistono davvero per il font scelto
+  if (v.startsWith('std:')) return { bold: true, italic: true, wb: 700, wr: 400 };
+  const f = textFonts && textFonts[v], ws = (f && f.weights) || [400];
+  const wb = ws.filter((w) => w >= 600).sort((a, b) => b - a)[0], wr = ws.includes(400) ? 400 : Math.min(...ws);
+  return { bold: wb !== undefined, italic: !!(f && (f.styles || []).includes('italic')), wb: wb, wr: wr };
+}
+function syncTextCaps() {
+  const c = fontCaps($('txtFont').value);
+  $('txtBold').disabled = !c.bold; if (!c.bold) $('txtBold').checked = false;
+  $('txtItalic').disabled = !c.italic; if (!c.italic) $('txtItalic').checked = false;
+  $('txtBold').parentElement.style.opacity = c.bold ? 1 : .45; $('txtItalic').parentElement.style.opacity = c.italic ? 1 : .45;
+}
+async function textSample() {
+  syncTextCaps();
+  const v = $('txtFont').value, b = $('txtBold').checked, i = $('txtItalic').checked, el = $('txtSample');
+  el.textContent = $('txtVal').value.trim() || 'Anteprima Aa Bb 0123 àèìòù €';
+  el.style.fontWeight = b ? 700 : 400; el.style.fontStyle = i ? 'italic' : 'normal';
+  if (v.startsWith('std:')) { el.style.fontFamily = STD_CSS[v.slice(4)]; return; }
+  const c = fontCaps(v); try { await FontManager.ensurePreviewFace(v, b ? c.wb : c.wr, i); el.style.fontFamily = "'" + textFonts[v].name + "'"; } catch (_) { el.style.fontFamily = 'sans-serif'; }
+}
+['txtFont', 'txtBold', 'txtItalic'].forEach((id) => $(id).addEventListener('change', textSample));
+$('txtVal').addEventListener('input', () => { $('txtOk').disabled = !$('txtVal').value.trim(); textSample(); });
+$('btnAddText').addEventListener('click', async () => { await fillTextFonts(); textSample(); $('txtOk').disabled = !$('txtVal').value.trim(); textDlg.showModal(); $('txtVal').focus(); });
+$('txtCancel').addEventListener('click', () => textDlg.close());
+$('txtOk').addEventListener('click', () => {
+  const size = Math.max(1, Math.min(500, parseFloat($('txtSize').value) || 14));
+  S.pending = { text: { text: $('txtVal').value.replace(/\s+$/, ''), font: $('txtFont').value, bold: $('txtBold').checked, italic: $('txtItalic').checked, size, color: $('txtColor').value } };
+  textDlg.close(); ov.style.cursor = 'text'; setStatus('Clic sulla pagina nel punto dove mettere il testo (angolo in alto a sinistra). Esc per annullare.');
+});
+async function embedTextFont(doc, sp) {
+  const L = PDFLib;
+  if (sp.font.startsWith('std:')) { const k = sp.font.slice(4), names = STD[k]; return doc.embedFont(L.StandardFonts[names[sp.bold && sp.italic ? 3 : sp.bold ? 1 : sp.italic ? 2 : 0]]); }
+  const c = fontCaps(sp.font);
+  return FontManager.embedPackagedFont(doc, sp.font, sp.bold && c.bold ? c.wb : c.wr, sp.italic && c.italic);
+}
+async function drawTextOnPage(raw, pageIdx, sp, px, py) {
+  const L = PDFLib;
+  const src = await L.PDFDocument.load(raw, { updateMetadata: false });
+  src.registerFontkit(window.fontkit);
+  const font = await embedTextFont(src, sp), page = src.getPage(pageIdx);
+  const c = sp.color.replace('#', ''), col = L.rgb(parseInt(c.slice(0, 2), 16) / 255, parseInt(c.slice(2, 4), 16) / 255, parseInt(c.slice(4, 6), 16) / 255);
+  const lh = sp.size * 1.2, asc = font.heightAtSize(sp.size, { descender: false });
+  sp.text.split(/\r?\n/).forEach((ln, i) => { if (ln) page.drawText(ln, { x: px, y: py - asc - i * lh, size: sp.size, font, color: col }); });
+  return new Uint8Array(await src.save());
+}
+async function placeText(sp, px, py) {
+  try {
+    setStatus('Aggiungo il testo…'); snapshot();
+    const before = S.objs.length;
+    const out = await drawTextOnPage(E.save(S.doc.doc), S.pageIndex, sp, px, py);
+    const pageIdx = S.pageIndex; await loadBytes(out, pageIdx);
+    const added = S.objs.slice(before).filter((o) => o.type === OBJ.TEXT);
+    S.sel = added; drawOverlay(); updateGlobalUI();
+    setStatus('Testo aggiunto. Trascinalo, ridimensionalo o eliminalo; Ctrl+Z annulla.', 'ok');
+  } catch (err) { await undo().catch(() => {}); setStatus('Testo non aggiunto: ' + (/encode|WinAnsi|glyph/i.test(err.message) ? 'il font scelto non contiene qualche carattere. Prova un altro font.' : err.message), 'err'); }
 }
 $('photoOk').addEventListener('click', async () => {
   try {
@@ -917,7 +1008,7 @@ $('photoOk').addEventListener('click', async () => {
   } catch (err) { setStatus('Sostituzione non riuscita: ' + err.message, 'err'); if (dlg.open) dlg.close(); }
 });
 
-window.__S = S; window.__test = { placePending, readImage, resizeSelection, handleAt, handlePos, hitAll, hitObject, readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
+window.__S = S; window.__test = { placePending, placeText, drawTextOnPage, readImage, resizeSelection, handleAt, handlePos, hitAll, hitObject, readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
 </script>
 </body>
 </html>
