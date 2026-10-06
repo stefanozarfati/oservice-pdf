@@ -15,27 +15,29 @@
       radial-gradient(1200px 600px at 110% -10%, rgba(243,106,1,.06), transparent 60%),
       radial-gradient(900px 500px at -10% 110%, rgba(6,42,99,.06), transparent 60%),
       #f6f8fa;
-    color:var(--ink);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:32px 18px}
-  header{display:flex;flex-direction:column;align-items:center;gap:14px;margin:24px 0 8px;text-align:center}
-  .brandlogo{width:192px;height:192px;object-fit:contain}
+    color:var(--ink);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px 18px 14px}
+  header{display:grid;grid-template-columns:auto 1fr;column-gap:18px;row-gap:2px;align-items:center;margin:4px 0 0;text-align:left;max-width:640px}
+  header .brandlogo{grid-row:1/3}
+  @media(max-width:520px){header{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}.brandlogo{width:96px!important;height:96px!important}}
+  .brandlogo{width:96px;height:96px;object-fit:contain;border-radius:20px}
   
-  h1{font-size:26px;color:var(--navy);letter-spacing:.3px;font-weight:800}
-  .sub{color:#6b7280;font-size:15px;max-width:440px;line-height:1.5}
-  .cards{display:flex;flex-wrap:wrap;justify-content:center;gap:18px;width:100%;max-width:750px;margin-top:30px}
-  .card{position:relative;background:#fff;border:1px solid #e9edf2;border-radius:18px;padding:26px 24px;
-    text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:14px;flex:1 1 210px;max-width:250px;
+  h1{font-size:24px;align-self:end;color:var(--navy);letter-spacing:.3px;font-weight:800}
+  .sub{color:#6b7280;font-size:14.5px;max-width:440px;line-height:1.4;align-self:start}
+  .cards{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;width:100%;max-width:1000px;margin-top:18px}
+  .card{position:relative;background:#fff;border:1px solid #e9edf2;border-radius:18px;padding:16px 16px 14px;
+    text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px;flex:1 1 200px;max-width:236px;
     box-shadow:0 6px 20px rgba(20,40,80,.05);transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;overflow:hidden}
   @media(max-width:620px){.card{flex:1 1 100%;max-width:420px}}
   .card:hover{transform:translateY(-4px);box-shadow:0 16px 36px rgba(20,40,80,.13);border-color:#d7dde6}
-  .card .ic{width:62px;height:62px;border-radius:15px;display:flex;align-items:center;justify-content:center}
+  .card .ic{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center}
   .card.att .ic{background:rgba(243,106,1,.12)}
   .card.imp .ic{background:rgba(6,42,99,.10)}
-  .card .ic svg{width:34px;height:34px}
-  .card h2{font-size:20px;color:var(--navy);font-weight:800}
-  .card p{font-size:14px;color:#6b7280;line-height:1.5}
+  .card .ic svg{width:26px;height:26px}
+  .card h2{font-size:17px;color:var(--navy);font-weight:800}
+  .card p{font-size:12.5px;color:#6b7280;line-height:1.42}
   .card .go{margin-top:auto;font-size:13px;font-weight:700;color:var(--orange);display:flex;align-items:center;justify-content:center;gap:6px}
   .card.imp .go{color:var(--navy)}
-  .stripe{position:absolute;top:0;right:0;width:74px;height:74px;transform:translate(28px,-28px) rotate(45deg)}
+  .stripe{position:absolute;top:0;right:0;width:56px;height:56px;transform:translate(22px,-22px) rotate(45deg)}
   .card.att .stripe{background:rgba(243,106,1,.10)}
   .card.imp .stripe{background:rgba(6,42,99,.08)} .card.cmp .ic{background:rgba(47,125,79,.12)} .card.cmp .stripe{background:rgba(47,125,79,.10)} .card.cmp .go{color:#2F7D4F}
   .card.cls .ic{background:rgba(107,63,160,.12)} .card.cls .stripe{background:rgba(107,63,160,.10)} .card.cls .go{color:#6B3FA0}
@@ -43,7 +45,7 @@
   .card.fnt .ic{background:rgba(180,83,9,.12)} .card.fnt .stripe{background:rgba(180,83,9,.10)} .card.fnt .go{color:#B45309}
   .card.mod .ic{background:rgba(190,24,93,.12)} .card.mod .stripe{background:rgba(190,24,93,.10)} .card.mod .go{color:#BE185D}
   .install-btn{margin-top:28px;background:var(--orange);color:#fff;border:0;padding:13px 24px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 8px 22px rgba(243,106,1,.32)}.install-btn:hover{filter:brightness(1.05)}.ios-hint{margin-top:24px;font-size:13.5px;color:#6b7280;background:#fff;border:1px solid #e9edf2;border-radius:10px;padding:11px 16px;max-width:440px;text-align:center;line-height:1.5}.ios-hint b{color:var(--navy)}
-footer{margin-top:36px;color:#9aa3af;font-size:12.5px;text-align:center;line-height:1.6}
+footer{margin-top:16px;color:#9aa3af;font-size:12.5px;text-align:center;line-height:1.6}
   footer b{color:#6b7280}
 </style>
 </head>
@@ -122,7 +124,7 @@ footer{margin-top:36px;color:#9aa3af;font-size:12.5px;text-align:center;line-hei
           <svg viewBox="0 0 24 24" fill="none" stroke="#BE185D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 15l5.5-5.5 1.8 1.8L10.8 16.8 9 17z"/></svg>
         </div>
         <h2>Modifica PDF</h2>
-        <p>Sposta o elimina oggetti (un punto di controllo, una scritta) e sostituisci le foto senza ricomprimerle. Il resto della pagina resta intatto.</p>
+        <p>Seleziona, sposta, ridimensiona ed elimina oggetti; aggiungi e modifica testi e foto, sostituisci foto senza ricomprimerle. Il resto resta intatto.</p>
         <div class="go">Apri &rarr;</div>
       </a>
 </div>
