@@ -314,7 +314,7 @@ $('#logofile').onchange=async(e)=>{
 };
 // ---- IMPORT / EXPORT lista nomi ----
 function fixApostropheAccent(s){return (s||'').replace(/([aeiouAEIOU])['\u2019`](?=\s|$)/g,(m,v)=>({a:'à',e:'è',i:'ì',o:'ò',u:'ù',A:'À',E:'È',I:'Ì',O:'Ò',U:'Ù'}[v]||m));}
-function normName(s){s=fixApostropheAccent((s||'').trim());if(!s)return s;if(s===s.toUpperCase()||s===s.toLowerCase()){return s.toLowerCase().replace(/(^|[\s'’-])([a-zà-ÿ])/g,(m,p,c)=>p+c.toUpperCase());}return s;}
+function normName(s){s=fixApostropheAccent((s||'').trim());if(!s)return s;if(/\d/.test(s))return s;const tc=x=>x.toLowerCase().replace(/(^|[\s'’-])([a-zà-ÿ])/g,(m,p,c)=>p+c.toUpperCase());if(s===s.toUpperCase()||s===s.toLowerCase())return tc(s);return s.split(/(\s+)/).map(w=>(w.length>1&&w===w.toUpperCase()&&w!==w.toLowerCase())?tc(w):w).join('');}
 $('#impList').onclick=()=>$('#listfile').click();
 $('#listfile').onchange=async(e)=>{
   const file=e.target.files[0]; if(!file){return;}
