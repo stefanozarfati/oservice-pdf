@@ -811,6 +811,25 @@ async function preloadFamilyForPreview(slug){
 // primo utilizzo di un font (anche solo passandoci sopra col grassetto) mostri per un
 // istante il font sbagliato.
 Promise.all(Object.values(FONT_LIB).map(preloadFamilyForPreview)).catch(()=>{});
+// Font importati dall'utente nella pagina "Font" (pool condiviso): voci normali del menu font.
+async function syncPoolFonts(){
+  try{
+    const m = await FontManager.loadManifest();
+    const pool = m.fonts.filter(f=>f.pool);
+    if(!pool.length) return;
+    const sel = $('fontSel');
+    let g = sel.querySelector('optgroup[data-pool]');
+    if(!g){ g = document.createElement('optgroup'); g.label = 'Personali'; g.setAttribute('data-pool','1'); sel.appendChild(g); }
+    for(const f of pool){
+      if(FONT_LIB[f.name]) continue;
+      FONT_LIB[f.name] = f.id;
+      const o = document.createElement('option');
+      o.value = "'"+f.name+"', sans-serif"; o.textContent = f.name; g.appendChild(o);
+    }
+    await Promise.all(pool.map(f=>preloadFamilyForPreview(f.id).catch(()=>{})));
+  }catch(e){ console.warn('pool font', e); }
+}
+syncPoolFonts();
 // Font veri installati sul computer, aggiunti dall'utente in questa sessione (solo
 // Chrome/Edge desktop): { nomeFamiglia: [FontData, ...] }. Non persistono nel progetto
 // salvato — se il progetto viene riaperto senza il font ancora selezionato in sessione,

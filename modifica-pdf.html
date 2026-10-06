@@ -112,6 +112,8 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
     </div>
     <div class="grp">
       <button class="btn danger" id="btnDel" disabled>Elimina</button>
+      <button class="btn" id="btnAddPhoto" title="Aggiungi una foto (JPEG, PNG, HEIC) e clicca dove metterla">Aggiungi foto&hellip;</button>
+      <input type="file" id="addPhotoFile" accept="image/jpeg,image/png,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif" hidden>
       <button class="btn" id="btnPhoto" disabled>Sostituisci foto&hellip;</button>
       <button class="btn" id="btnUndo" disabled title="Annulla (Ctrl+Z)">Annulla</button>
     </div>
@@ -127,6 +129,13 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
     <aside class="side">
       <h3>Selezione</h3>
       <div class="box" id="selInfo"><span class="big">Nessuna</span><small>Fai clic su un oggetto della pagina.</small></div>
+      <h3>Dimensioni</h3>
+      <div class="box">
+        <div class="step"><label for="dimW">Largh.</label><input id="dimW" type="number" min="0.1" step="0.1" disabled><span>mm</span></div>
+        <div class="step" style="margin-top:6px"><label for="dimH">Altezza</label><input id="dimH" type="number" min="0.1" step="0.1" disabled><span>mm</span></div>
+        <label class="step" style="margin-top:8px"><input type="checkbox" id="dimLock" checked style="width:auto"> Mantieni le proporzioni</label>
+        <small>Oppure trascina le maniglie sulla selezione: angolo = proporzionale, <kbd>Maiusc</kbd> = libero.</small>
+      </div>
       <h3>Sposta con precisione</h3>
       <div class="box">
         <div class="pad">
@@ -150,12 +159,12 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
 <dialog id="photoDlg">
   <div class="dlg">
     <h2>Sostituisci foto</h2>
-    <p>La nuova foto va nel riquadro di quella selezionata. Un JPEG viene inserito <b>così com'è, senza ricomprimerlo</b>.</p>
-    <input type="file" id="photoFile" accept="image/jpeg,.jpg,.jpeg">
+    <p>La nuova foto va nel riquadro di quella selezionata. JPEG e PNG vengono inseriti <b>senza perdita di qualità</b>; le foto HEIC (iPhone) vengono convertite in JPEG.</p>
+    <input type="file" id="photoFile" accept="image/jpeg,image/png,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif">
     <div class="opt"><input type="radio" name="fit" id="fitCrop" value="crop" checked><label for="fitCrop"><b>Riempi il riquadro (ritaglia)</b><small>La foto copre tutto il riquadro; i bordi in eccesso vengono nascosti.</small></label></div>
     <div class="opt"><input type="radio" name="fit" id="fitFit" value="fit"><label for="fitFit"><b>Adatta (mostra tutta la foto)</b><small>La foto sta intera nel riquadro; possono restare bordi vuoti.</small></label></div>
     <div class="opt"><input type="checkbox" id="reduce300"><label for="reduce300"><b>Riduci a 300 dpi</b><small id="reduceNote">Alleggerisce il file, ma ricomprime la foto (qualità 92%).</small></label></div>
-    <div class="info" id="photoInfo">Scegli un file JPEG.</div>
+    <div class="info" id="photoInfo">Scegli una foto (JPEG, PNG o HEIC).</div>
     <div class="row">
       <button class="btn" id="photoCancel">Annulla</button>
       <button class="btn primary" id="photoOk" disabled>Sostituisci</button>
@@ -422,13 +431,37 @@ function planPhoto(info, M0, mode) {
   const visible = mode === 'crop' ? (W * H) / (dw * dh) : 1;
   return { T, dw, dh, W, H, ow, oh, dpi, cropPct: Math.round((1 - visible) * 100) };
 }
-async function resampleJpeg(file, targetW) {
-  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+function parsePng(b) {
+  if (b.length < 33 || b[0] !== 0x89 || b[1] !== 0x50 || b[2] !== 0x4E || b[3] !== 0x47) throw new Error('PNG non valido.');
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  return { w: dv.getUint32(16), h: dv.getUint32(20), comps: 0, orient: 1, alpha: b[25] === 4 || b[25] === 6 };
+}
+const isHeicBytes = (b) => b.length > 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70 && /^(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(String.fromCharCode(b[8], b[9], b[10], b[11]));
+let heicLoading = null;
+function loadHeicLib() {                              // libreria HEIC (~3 MB): si scarica solo quando serve, poi resta in cache
+  if (window.HeicTo) return Promise.resolve();
+  return heicLoading || (heicLoading = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = './lib/heic-to.js'; sc.onload = res; sc.onerror = () => { heicLoading = null; rej(new Error('Non riesco a caricare il convertitore HEIC (serve la connessione la prima volta).')); }; document.head.appendChild(sc); }));
+}
+async function readImage(file) {                      // -> { kind: 'jpeg'|'png', bytes, info, converted }
+  let bytes = new Uint8Array(await file.arrayBuffer());
+  if (isHeicBytes(bytes)) {
+    setStatus('Converto la foto HEIC in JPEG…'); await loadHeicLib();
+    const out = await window.HeicTo({ blob: file, type: 'image/jpeg', quality: 0.92 });
+    bytes = new Uint8Array(await out.arrayBuffer());
+    return { kind: 'jpeg', bytes, info: parseJpeg(bytes), converted: true };
+  }
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8) return { kind: 'jpeg', bytes, info: parseJpeg(bytes), converted: false };
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) return { kind: 'png', bytes, info: parsePng(bytes), converted: false };
+  throw new Error('Formato non supportato: usa JPEG, PNG o HEIC.');
+}
+async function resampleImage(bytes, kind, targetW) {
+  const mime = kind === 'png' ? 'image/png' : 'image/jpeg';
+  const bmp = await createImageBitmap(new Blob([bytes], { type: mime }), { imageOrientation: 'from-image' });
   const ratio = targetW / bmp.width;
   const tw = Math.max(1, Math.round(bmp.width * ratio)), th = Math.max(1, Math.round(bmp.height * ratio));
   const c = document.createElement('canvas'); c.width = tw; c.height = th;
   const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, tw, th);
-  const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.92));
+  const blob = await new Promise((res) => c.toBlob(res, mime, 0.92));
   bmp.close && bmp.close();
   return new Uint8Array(await blob.arrayBuffer());
 }
@@ -436,7 +469,7 @@ async function resampleJpeg(file, targetW) {
 /* ============================================================
    STATO E INTERFACCIA
    ============================================================ */
-const S = { doc: null, page: null, pageIndex: 0, pageCount: 0, pw: 0, ph: 0, objs: [], circles: [], controlOf: null, sel: [], mode: 'obj', zoom: 1, view: null, undo: [], fileName: 'documento', drag: null, lastNudge: 0, dirty: false, lastHit: null };
+const S = { doc: null, page: null, pageIndex: 0, pageCount: 0, pw: 0, ph: 0, objs: [], circles: [], controlOf: null, sel: [], mode: 'obj', zoom: 1, view: null, undo: [], fileName: 'documento', drag: null, lastNudge: 0, dirty: false, lastHit: null, rz: null, pending: null };
 const cv = $('cv'), ov = $('ov'), ctx = cv.getContext('2d'), octx = ov.getContext('2d');
 function setStatus(msg, kind) { const s = $('status'); s.textContent = msg || ''; s.className = 'status' + (kind ? ' ' + kind : ''); }
 const nf = (v, d = 1) => v.toFixed(d).replace('.', ',');
@@ -512,12 +545,37 @@ function drawOverlay(dx = 0, dy = 0) {                 // dx, dy: spostamento pr
   octx.strokeStyle = ACCENT; octx.setLineDash([6 * octx.lineWidth, 4 * octx.lineWidth]); octx.lineWidth *= 1.6;
   const pd = 3 * octx.lineWidth; octx.strokeRect(R.x - pd, R.y - pd, R.w + 2 * pd, R.h + 2 * pd);
   octx.restore();
+  if (!dx && !dy && !S.rz) drawHandles();
 }
+// ---- maniglie di ridimensionamento (angoli e metà lati), definite sul rettangolo della selezione in coordinate pagina ----
+const HND = [['l', 'b'], ['m', 'b'], ['r', 'b'], ['l', 'm'], ['r', 'm'], ['l', 't'], ['m', 't'], ['r', 't']];
+const hx = (u, k) => (k === 'l' ? u.l : k === 'r' ? u.r : (u.l + u.r) / 2), hy = (u, k) => (k === 'b' ? u.b : k === 't' ? u.t : (u.b + u.t) / 2);
+const opposite = (k) => (k === 'l' ? 'r' : k === 'r' ? 'l' : k);
+const opposite2 = (k) => (k === 'b' ? 't' : k === 't' ? 'b' : k);
+function handlePos(u, h) { return page2dev(hx(u, h[0]), hy(u, h[1])); }
+const handlesOk = () => { if (!S.sel.length) return false; const R = rectToDev(selUnion()), m = Math.max(22, ov.width / 60); return R.w >= m || R.h >= m; };   // oggetti minuscoli: niente maniglie (si usano le caselle in mm)
+function drawHandles() {
+  if (!handlesOk()) return;
+  const u = selUnion(), sz = Math.max(5, ov.width / 190);
+  octx.save(); octx.setLineDash([]); octx.lineWidth = Math.max(1, ov.width / 900) * 1.4; octx.strokeStyle = ACCENT; octx.fillStyle = '#fff';
+  for (const h of HND) { const [x, y] = handlePos(u, h); octx.fillRect(x - sz / 2, y - sz / 2, sz, sz); octx.strokeRect(x - sz / 2, y - sz / 2, sz, sz); }
+  octx.restore();
+}
+function handleAt(dx, dy) {                              // maniglia sotto il puntatore (coordinate dispositivo)
+  if (!handlesOk()) return null;
+  const u = selUnion(), r = Math.max(8, ov.width / 130);
+  for (const h of HND) { const [x, y] = handlePos(u, h); if (Math.abs(dx - x) <= r && Math.abs(dy - y) <= r) return h; }
+  return null;
+}
+const HCUR = { lb: 'nesw-resize', rt: 'nesw-resize', lt: 'nwse-resize', rb: 'nwse-resize', mb: 'ns-resize', mt: 'ns-resize', lm: 'ew-resize', rm: 'ew-resize' };
 function updateSelUI() {
   const n = S.sel.length, box = $('selInfo');
   const has = n > 0;
   ['btnDel', 'nUp', 'nDown', 'nLeft', 'nRight'].forEach((id) => { $(id).disabled = !has; });
   $('btnPhoto').disabled = !(n === 1 && S.sel[0].type === OBJ.IMAGE);
+  $('dimW').disabled = $('dimH').disabled = !has;
+  if (!has) { $('dimW').value = ''; $('dimH').value = ''; }
+  else { const u0 = selUnion(); $('dimW').value = ((u0.r - u0.l) / MM).toFixed(2); $('dimH').value = ((u0.t - u0.b) / MM).toFixed(2); }
   if (!has) { box.innerHTML = '<span class="big">Nessuna</span><small>Fai clic su un oggetto della pagina.</small>'; return; }
   const u = selUnion(), wmm = (u.r - u.l) / MM, hmm = (u.t - u.b) / MM;
   const names = { 1: 'testo', 2: 'tracciato', 3: 'immagine', 4: 'sfumatura', 5: 'gruppo' };
@@ -554,6 +612,16 @@ function moveSelection(dxPt, dyPt, coalesce) {
   S.lastNudge = coalesce ? now : 0;
   const idx = S.sel.map((o) => o.i);
   for (const o of S.sel) E.w.FPDFPageObj_Transform(o.h, 1, 0, 0, 1, dxPt, dyPt);
+  E.w.FPDFPage_GenerateContent(S.page);
+  refreshObjects(); reselect(idx);
+  renderView();
+}
+function resizeSelection(sx, sy, ax, ay) {            // scala la selezione rispetto al punto fisso (ax, ay), in coordinate pagina
+  if (!S.sel.length || !isFinite(sx) || !isFinite(sy) || sx <= 0 || sy <= 0) return;
+  if (Math.abs(sx - 1) < 1e-6 && Math.abs(sy - 1) < 1e-6) return;
+  snapshot(); S.lastNudge = 0;
+  const idx = S.sel.map((o) => o.i);
+  for (const o of S.sel) E.w.FPDFPageObj_Transform(o.h, sx, 0, 0, sy, ax * (1 - sx), ay * (1 - sy));
   E.w.FPDFPage_GenerateContent(S.page);
   refreshObjects(); reselect(idx);
   renderView();
@@ -617,6 +685,13 @@ function selectAtPoint(px, py, additive) {
 ov.addEventListener('pointerdown', (e) => {
   if (!S.page || (e.pointerType === 'mouse' && e.button !== 0)) return;
   const [dx, dy] = eventDev(e);
+  if (S.pending) { const [qx, qy] = dev2page(dx, dy); e.preventDefault(); placePending(qx, qy); return; }
+  const hnd = handleAt(dx, dy);
+  if (hnd) {
+    const u = selUnion();
+    S.rz = { h: hnd, u: { ...u }, id: e.pointerId, ax: hx(u, opposite(hnd[0])), ay: hy(u, opposite2(hnd[1])), sx: 1, sy: 1 };
+    ov.setPointerCapture(e.pointerId); e.preventDefault(); return;
+  }
   const inside = (() => { if (!S.sel.length) return false; const R = rectToDev(selUnion()), p = 6; return dx >= R.x - p && dx <= R.x + R.w + p && dy >= R.y - p && dy <= R.y + R.h + p; })();
   if (inside && !e.shiftKey) {
     S.drag = { x0: dx, y0: dy, moved: false, id: e.pointerId };
@@ -627,13 +702,37 @@ ov.addEventListener('pointerdown', (e) => {
     selectAtPoint(px, py, e.shiftKey);
   }
 });
+function rzScale(e, r = S.rz) {                        // fattori di scala dal puntatore attuale
+  const [dx, dy] = eventDev(e), [px, py] = dev2page(dx, dy), hxp = hx(r.u, r.h[0]), hyp = hy(r.u, r.h[1]);
+  const w0 = hxp - r.ax, h0 = hyp - r.ay;
+  let sx = r.h[0] === 'm' || Math.abs(w0) < 1e-6 ? 1 : (px - r.ax) / w0, sy = r.h[1] === 'm' || Math.abs(h0) < 1e-6 ? 1 : (py - r.ay) / h0;
+  const corner = r.h[0] !== 'm' && r.h[1] !== 'm' && Math.abs(w0) > 1e-6 && Math.abs(h0) > 1e-6;
+  if (corner && !e.shiftKey) { const k = ((px - r.ax) * w0 + (py - r.ay) * h0) / (w0 * w0 + h0 * h0); sx = sy = k; }   // proporzionale
+  const mn = 0.02; return [Math.max(mn, sx), Math.max(mn, sy)];
+}
 ov.addEventListener('pointermove', (e) => {
+  if (S.rz && e.pointerId === S.rz.id) {
+    const [sx, sy] = rzScale(e); S.rz.sx = sx; S.rz.sy = sy;
+    const u = S.rz.u, c = [[u.l, u.b], [u.r, u.b], [u.l, u.t], [u.r, u.t]].map(([x, y]) => page2dev(S.rz.ax + (x - S.rz.ax) * sx, S.rz.ay + (y - S.rz.ay) * sy));
+    const xs = c.map((p) => p[0]), ys = c.map((p) => p[1]), x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
+    const R = rectToDev(u);
+    octx.clearRect(0, 0, ov.width, ov.height);
+    octx.save(); octx.globalAlpha = 0.65; octx.drawImage(cv, R.x, R.y, R.w, R.h, x0, y0, w, h); octx.restore();
+    octx.save(); octx.strokeStyle = ACCENT; octx.lineWidth = Math.max(1, ov.width / 900) * 1.6; octx.setLineDash([6, 4]); octx.strokeRect(x0, y0, w, h); octx.restore();
+    return;
+  }
+  if (!S.drag) { const [mx, my] = eventDev(e), hh = handleAt(mx, my); ov.style.cursor = hh ? HCUR[hh.join('')] || 'pointer' : (S.sel.length ? 'move' : 'crosshair'); }
   if (!S.drag || e.pointerId !== S.drag.id) return;
   const [dx, dy] = eventDev(e), ddx = dx - S.drag.x0, ddy = dy - S.drag.y0;
   if (!S.drag.moved && Math.hypot(ddx, ddy) < 3) return;
   S.drag.moved = true; drawOverlay(ddx, ddy);
 });
 ov.addEventListener('pointerup', (e) => {
+  if (S.rz && e.pointerId === S.rz.id) {
+    const r = S.rz; S.rz = null; const [sx, sy] = rzScale(e, r);
+    try { resizeSelection(sx, sy, r.ax, r.ay); } catch (err) { setStatus(err.message, 'err'); }
+    drawOverlay(); return;
+  }
   if (!S.drag || e.pointerId !== S.drag.id) return;
   const d = S.drag; S.drag = null;
   const [dx, dy] = eventDev(e);
@@ -641,7 +740,7 @@ ov.addEventListener('pointerup', (e) => {
   const p0 = dev2page(d.x0, d.y0), p1 = dev2page(dx, dy);
   try { moveSelection(p1[0] - p0[0], p1[1] - p0[1], false); } catch (err) { setStatus(err.message, 'err'); }
 });
-ov.addEventListener('pointercancel', () => { if (S.drag) { S.drag = null; drawOverlay(); } });
+ov.addEventListener('pointercancel', () => { if (S.rz) { S.rz = null; drawOverlay(); } if (S.drag) { S.drag = null; drawOverlay(); } });
 
 /* ---------- tastiera ---------- */
 document.addEventListener('keydown', (e) => {
@@ -651,7 +750,7 @@ document.addEventListener('keydown', (e) => {
   const k = e.key;
   try {
     if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
-    if (k === 'Escape') { S.sel = []; drawOverlay(); return; }
+    if (k === 'Escape') { if (S.pending) { S.pending = null; ov.style.cursor = 'crosshair'; setStatus('Aggiunta annullata.'); return; } S.sel = []; drawOverlay(); return; }
     if (!S.sel.length) return;
     if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
     const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[k];
@@ -659,6 +758,19 @@ document.addEventListener('keydown', (e) => {
   } catch (err) { setStatus(err.message, 'err'); }
 });
 [['nUp', 0, 1], ['nDown', 0, -1], ['nLeft', -1, 0], ['nRight', 1, 0]].forEach(([id, x, y]) => $(id).addEventListener('click', (e) => { try { nudge(x, y, e.shiftKey, e.altKey); } catch (err) { setStatus(err.message, 'err'); } }));
+
+/* ---------- dimensioni numeriche ---------- */
+function applyDim(which) {
+  if (!S.sel.length) return;
+  const u = selUnion(), w0 = (u.r - u.l) / MM, h0 = (u.t - u.b) / MM;
+  const w = parseFloat($('dimW').value), h = parseFloat($('dimH').value);
+  let sx = 1, sy = 1;
+  if (which === 'w' && w > 0) { sx = w / w0; sy = $('dimLock').checked ? sx : 1; }
+  else if (which === 'h' && h > 0) { sy = h / h0; sx = $('dimLock').checked ? sy : 1; }
+  try { resizeSelection(sx, sy, u.l, u.t); } catch (err) { setStatus(err.message, 'err'); }       // punto fisso: angolo in alto a sinistra
+}
+$('dimW').addEventListener('change', () => applyDim('w'));
+$('dimH').addEventListener('change', () => applyDim('h'));
 
 /* ---------- barra strumenti ---------- */
 $('modeObj').addEventListener('click', () => { S.mode = 'obj'; $('modeObj').classList.add('on'); $('modeCtl').classList.remove('on'); });
@@ -728,25 +840,59 @@ function photoPlan() {
 }
 function refreshPhotoInfo() {
   const p = photoPlan();
-  if (!p) { $('photoInfo').textContent = 'Scegli un file JPEG.'; $('photoOk').disabled = true; return; }
+  if (!p) { $('photoInfo').textContent = 'Scegli una foto (JPEG, PNG o HEIC).'; $('photoOk').disabled = true; return; }
   const { plan, mode } = p, i = photo.info;
+  const fmt = photo.converted ? '\nFoto HEIC convertita in JPEG (qualità 92%).' : (photo.kind === 'png' ? ('\nPNG inserito senza perdita di qualità' + (i.alpha ? ' (la trasparenza resta).' : '.')) : '');
   const ori = i.orient !== 1 ? '\nOrientamento EXIF ' + i.orient + ': la foto viene raddrizzata senza ricomprimerla.' : '';
   $('photoInfo').textContent = 'Foto: ' + i.w + '×' + i.h + ' px' + (i.comps === 4 ? ' (CMYK)' : '') + '\nRiquadro: ' + nf(plan.W / MM) + ' × ' + nf(plan.H / MM) + ' mm\n' +
     (mode === 'crop' ? (plan.cropPct > 0 ? 'Ritaglio: circa ' + plan.cropPct + '% della foto resta fuori.' : 'Stesse proporzioni: nessun ritaglio.') : 'Adatta: la foto sta intera nel riquadro.') +
-    '\nRisoluzione sulla pagina: circa ' + Math.round(plan.dpi) + ' dpi' + ori;
+    '\nRisoluzione sulla pagina: circa ' + Math.round(plan.dpi) + ' dpi' + ori + fmt;
   const r = $('reduce300'); const canReduce = plan.dpi > 300.5;
   r.disabled = !canReduce; if (!canReduce) r.checked = false;
-  $('reduceNote').textContent = canReduce ? 'Alleggerisce il file, ma ricomprime la foto (qualità 92%).' : 'Non serve: la foto è già a 300 dpi o meno.';
+  $('reduceNote').textContent = canReduce ? (photo.kind === 'png' ? 'Alleggerisce il file riducendo i pixel (resta PNG).' : 'Alleggerisce il file, ma ricomprime la foto (qualità 92%).') : 'Non serve: la foto è già a 300 dpi o meno.';
   $('photoOk').disabled = false;
 }
-$('btnPhoto').addEventListener('click', () => { photo = null; $('photoFile').value = ''; $('reduce300').checked = false; refreshPhotoInfo(); $('photoInfo').textContent = 'Scegli un file JPEG.'; $('photoOk').disabled = true; dlg.showModal(); });
+$('btnPhoto').addEventListener('click', () => { photo = null; $('photoFile').value = ''; $('reduce300').checked = false; refreshPhotoInfo(); $('photoInfo').textContent = 'Scegli una foto (JPEG, PNG o HEIC).'; $('photoOk').disabled = true; dlg.showModal(); });
 $('photoCancel').addEventListener('click', () => dlg.close());
 $('photoFile').addEventListener('change', async () => {
   const f = $('photoFile').files[0]; if (!f) return;
-  try { const bytes = new Uint8Array(await f.arrayBuffer()); photo = { file: f, bytes, info: parseJpeg(bytes) }; refreshPhotoInfo(); }
-  catch (err) { photo = null; $('photoInfo').textContent = err.message; $('photoOk').disabled = true; }
+  try { photo = { file: f, ...(await readImage(f)) }; setStatus(''); refreshPhotoInfo(); }
+  catch (err) { photo = null; $('photoInfo').textContent = err.message; $('photoOk').disabled = true; setStatus(err.message, 'err'); }
 });
 document.querySelectorAll('input[name=fit]').forEach((r) => r.addEventListener('change', refreshPhotoInfo));
+async function drawImageOnPage(raw, pageIdx, kind, bytes, M0, mode, plan) {      // inserisce l'immagine nella pagina (pdf-lib) e restituisce il PDF risultante
+  const L = PDFLib;
+  const src = await L.PDFDocument.load(raw, { updateMetadata: false });
+  const page = src.getPage(pageIdx);
+  const img = kind === 'png' ? await src.embedPng(bytes) : await src.embedJpg(bytes);
+  const name = page.node.newXObject('Foto', img.ref);
+  const ops = [L.pushGraphicsState(), L.concatTransformationMatrix(...M0)];
+  if (mode === 'crop') ops.push(L.rectangle(0, 0, 1, 1), L.clip(), L.endPath());      // il ritaglio: tutto ciò che esce dal riquadro è nascosto
+  ops.push(L.concatTransformationMatrix(...plan.T), L.drawObject(name), L.popGraphicsState());
+  page.pushOperators(...ops);
+  return new Uint8Array(await src.save());
+}
+/* ---------- aggiungere una foto nuova ---------- */
+$('btnAddPhoto').addEventListener('click', () => $('addPhotoFile').click());
+$('addPhotoFile').addEventListener('change', async () => {
+  const f = $('addPhotoFile').files[0]; $('addPhotoFile').value = ''; if (!f) return;
+  try { const img = await readImage(f); S.pending = { file: f, ...img }; ov.style.cursor = 'copy'; setStatus('Clic sulla pagina nel punto dove mettere la foto (Esc per annullare).'); }
+  catch (err) { S.pending = null; setStatus(err.message, 'err'); }
+});
+async function placePending(px, py) {
+  const P = S.pending; S.pending = null; ov.style.cursor = S.sel.length ? 'move' : 'crosshair';
+  try {
+    const o = P.info.orient >= 5 ? { w: P.info.h, h: P.info.w } : { w: P.info.w, h: P.info.h };      // dimensioni come si vede la foto
+    const W = Math.min(60 * MM, S.pw * 0.4), H = W * o.h / o.w;
+    const M0 = [W, 0, 0, H, px - W / 2, py - H / 2], plan = planPhoto(P.info, M0, 'fit');
+    setStatus('Aggiungo la foto…'); snapshot();
+    const out = await drawImageOnPage(E.save(S.doc.doc), S.pageIndex, P.kind, P.bytes, M0, 'fit', plan);
+    const pageIdx = S.pageIndex; await loadBytes(out, pageIdx);
+    for (let i = S.objs.length - 1; i >= 0; i--) if (S.objs[i].type === OBJ.IMAGE) { S.sel = [S.objs[i]]; break; }
+    drawOverlay(); updateGlobalUI();
+    setStatus('Foto aggiunta' + (P.converted ? ' (HEIC convertita in JPEG)' : '') + '. Trascinala, ridimensionala con le maniglie o con le caselle in mm. Ctrl+Z per annullare.', 'ok');
+  } catch (err) { setStatus('Aggiunta non riuscita: ' + err.message, 'err'); }
+}
 $('photoOk').addEventListener('click', async () => {
   try {
     $('photoOk').disabled = true;
@@ -756,7 +902,7 @@ $('photoOk').addEventListener('click', async () => {
     if ($('reduce300').checked && plan.dpi > 300.5) {                   // ricompressione facoltativa
       setStatus('Riduco la foto a 300 dpi…');
       const tw = Math.round(plan.ow * 300 / plan.dpi);
-      bytes = await resampleJpeg(photo.file, tw); info = parseJpeg(bytes); plan = planPhoto(info, M0, mode);
+      bytes = await resampleImage(photo.bytes, photo.kind, tw); info = photo.kind === 'png' ? parsePng(bytes) : parseJpeg(bytes); plan = planPhoto(info, M0, mode);
     }
     dlg.close();
     setStatus('Sostituisco la foto…');
@@ -764,24 +910,14 @@ $('photoOk').addEventListener('click', async () => {
     if (!E.w.FPDFPage_RemoveObject(S.page, target.h)) throw new Error('Non riesco a togliere la vecchia foto.');
     E.w.FPDFPageObj_Destroy(target.h);
     E.w.FPDFPage_GenerateContent(S.page);
-    const raw = E.save(S.doc.doc);
-    const L = PDFLib;
-    const src = await L.PDFDocument.load(raw, { updateMetadata: false });
-    const page = src.getPage(pageIdx);
-    const img = await src.embedJpg(bytes);
-    const name = page.node.newXObject('Foto', img.ref);
-    const ops = [L.pushGraphicsState(), L.concatTransformationMatrix(...M0)];
-    if (mode === 'crop') ops.push(L.rectangle(0, 0, 1, 1), L.clip(), L.endPath());      // il ritaglio: tutto ciò che esce dal riquadro vecchio è nascosto
-    ops.push(L.concatTransformationMatrix(...plan.T), L.drawObject(name), L.popGraphicsState());
-    page.pushOperators(...ops);
-    const out = await src.save();
-    await loadBytes(new Uint8Array(out), pageIdx);
+    const out = await drawImageOnPage(E.save(S.doc.doc), pageIdx, photo.kind, bytes, M0, mode, plan);
+    await loadBytes(out, pageIdx);
     updateGlobalUI();
-    setStatus('Foto sostituita' + (bytes === photo.bytes ? ' senza ricomprimerla' : ' (ridotta a 300 dpi)') + '. La nuova foto è in primo piano sulla pagina. Ctrl+Z per annullare.', 'ok');
+    setStatus('Foto sostituita' + (bytes !== photo.bytes ? ' (ridotta a 300 dpi)' : photo.converted ? ' (HEIC convertita in JPEG)' : photo.kind === 'png' ? ' (PNG senza perdita)' : ' senza ricomprimerla') + '. La nuova foto è in primo piano sulla pagina. Ctrl+Z per annullare.', 'ok');
   } catch (err) { setStatus('Sostituzione non riuscita: ' + err.message, 'err'); if (dlg.open) dlg.close(); }
 });
 
-window.__S = S; window.__test = { hitAll, hitObject, readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
+window.__S = S; window.__test = { placePending, readImage, resizeSelection, handleAt, handlePos, hitAll, hitObject, readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
 </script>
 </body>
 </html>
