@@ -59,7 +59,9 @@ input[type=number]{width:74px}
 
     <h2 style="margin-top:18px">2 · Impostazioni</h2>
     <div class="row"><label>Modalità</label>
-      <div class="seg" id="mode"><button data-v="auto" class="on">Auto (A)</button><button data-v="grid">Griglia</button><button data-v="poster">Poster</button></div></div>
+      <div class="seg" id="mode"><button data-v="auto" class="on">Auto (A)</button><button data-v="grid">Griglia</button><button data-v="poster">Poster</button><button data-v="nup">Ripeti ×N</button></div></div>
+    <div class="row" id="nuprow" style="display:none"><label>Copie per foglio</label><input id="nup" type="number" value="4" min="2" max="64" step="1"></div>
+    <div class="row" id="nupmrow" style="display:none"><label>Margine dal bordo (mm)</label><input id="nupm" type="number" value="0" min="0" max="50" step="1"></div>
     <div class="row"><label>Formato di uscita</label>
       <select id="outfmt"><option value="4" selected>A4 (21×29,7)</option><option value="3">A3 (29,7×42)</option><option value="2">A2 (42×59,4)</option><option value="1">A1 (59,4×84,1)</option><option value="0">A0 (84,1×118,9)</option><option value="custom">Personalizzato…</option></select></div>
     <div class="row" id="customout" style="display:none"><label>Foglio uscita (mm)</label>
@@ -83,7 +85,7 @@ input[type=number]{width:74px}
   <div class="card">
     <h2>Anteprima</h2>
     <div class="preview" id="preview">Aggiungi dei file e premi <b style="margin:0 4px">Genera PDF</b>.</div>
-    <p class="muted" style="margin-top:10px"><b>Auto</b>: incastra i formati A nel foglio scelto. <b>Griglia</b>: ripete a griglia formati liberi. <b>Poster</b>: spezza un file grande su più fogli (con segni di taglio e sovrapposizione). Output vettoriale 1:1, offline.</p>
+    <p class="muted" style="margin-top:10px"><b>Auto</b>: incastra i formati A nel foglio scelto. <b>Griglia</b>: ripete a griglia formati liberi. <b>Poster</b>: spezza un file grande su più fogli (con segni di taglio e sovrapposizione). <b>Ripeti ×N</b>: mette N copie dello stesso file in un foglio, ridimensionandole (es. A4 ×4 su A4 = quattro A6). Output vettoriale 1:1, offline.</p>
   </div>
 </div>
 <script src="./lib/pdf-lib-bundle.js"></script>
@@ -132,6 +134,23 @@ function posterUnit(it,out,O,orientation){
   cand.sort((a,b)=>a.n-b.n);return{idx:it.idx,w:it.w,h:it.h,...cand[0]};
 }
 function computePoster(items,out,O,orientation){return{kind:'poster',units:items.map(it=>posterUnit(it,out,O,orientation))};}
+// ---- RIPETI ×N ----
+function computeNup(items,out,orientation,N,M){M=M||0;
+  const P=[out.S,out.L],Lr=[out.L,out.S];
+  const sheetOpts=orientation==='portrait'?[P]:orientation==='landscape'?[Lr]:[P,Lr];
+  const sheets=items.map(it=>{let best=null;
+    for(const sz of sheetOpts)for(let c=1;c<=N;c++){const r=Math.ceil(N/c);if((r-1)*c>=N)continue;const cw=(sz[0]-2*M)/c,ch=(sz[1]-2*M)/r;if(cw<=0||ch<=0)continue;
+      for(const rot of[false,true]){const fw=rot?it.h:it.w,fh=rot?it.w:it.h,sc=Math.min(cw/fw,ch/fh);
+        const better=!best||sc>best.sc+1e-6||(Math.abs(sc-best.sc)<=1e-6&&(c*r<best.c*best.r||(c*r===best.c*best.r&&!rot&&best.rot)));
+        if(better)best={sz,c,r,cw,ch,rot,sc,fw,fh};}}
+    if(!best)return null;
+    const{sz,c,r,cw,ch,rot,sc,fw,fh}=best,W=fw*sc,H=fh*sc,plan=[];
+    for(let k=0;k<N;k++){const col=k%c,row=Math.floor(k/c);
+      plan.push({idx:it.idx,w:it.w*sc,h:it.h*sc,region:{x:M+col*cw+(cw-W)/2,y:sz[1]-M-(row+1)*ch+(ch-H)/2,w:W,h:H},rot});}
+    return{size:sz,plan,n:N,rots:rot?N:0,cols:c,rows:r,scale:sc};});
+  if(sheets.some(x=>!x))return{error:'Margine troppo grande per questo foglio.'};
+  return{kind:'plan',nup:true,sheets};
+}
 // ---- disegno comune ----
 function placePage(page,emb,w,h,region,rot,dir){const fw=rot?h:w,fh=rot?w:h,mx=(region.w-fw)/2,my=(region.h-fh)/2;
   if(!rot)page.drawPage(emb,{x:region.x+mx,y:region.y+my,width:w,height:h});
@@ -167,7 +186,7 @@ function setMode(v){MODE=v;document.querySelectorAll('#mode button').forEach(x=>
 seg('mode',v=>{MODE=v;gridAuto=false;});seg('orient',v=>orient=v);seg('rotdir',v=>ROTDIR=v);
 $('#outfmt').addEventListener('change',()=>{autoMode();renderFiles();refresh();});
 $('#imgfmt').addEventListener('change',()=>{$('#customimg').style.display=$('#imgfmt').value==='custom'?'flex':'none';autoMode();renderFiles();refresh();});
-['#copies','#overlap','#outW','#outH','#imgW','#imgH'].forEach(s=>$(s).addEventListener('input',()=>{autoMode();renderFiles();refresh();}));
+['#copies','#nup','#nupm','#overlap','#outW','#outH','#imgW','#imgH'].forEach(s=>$(s).addEventListener('input',()=>{autoMode();renderFiles();refresh();}));
 $('#crop').addEventListener('change',refresh);
 async function addFiles(list){
   for(const f of list){
@@ -185,7 +204,8 @@ function autoMode(){
   $('#imgfmtrow').style.display=FILES.some(f=>f.isImage)?'flex':'none';
   $('#customout').style.display=$('#outfmt').value==='custom'?'flex':'none';
   $('#overlaprow').style.display=MODE==='poster'?'flex':'none';
-  if(MODE==='poster')return;
+  $('#nuprow').style.display=$('#nupmrow').style.display=MODE==='nup'?'flex':'none';
+  if(MODE==='poster'||MODE==='nup')return;
   const out=getOut(),items=itemsWithIdx();
   const nonA=out.an==null||items.some(it=>it.an==null);
   if(nonA&&MODE==='auto'){setMode('grid');gridAuto=true;}
@@ -195,11 +215,11 @@ function fmtLabel(f){
   if(f.isImage){const b=imgBox(f);const nm=b.an!=null?'A'+b.an:$('#imgfmt').value;return `<span class="fmt na">IMG ${nm}${f.pxW<f.pxH?' ↕':' ↔'}</span>`;}
   return f.an==null?`<span class="fmt na">${(f.w/2.83465).toFixed(0)}×${(f.h/2.83465).toFixed(0)}</span>`:`<span class="fmt">A${f.an}${f.w<f.h?' ↕':' ↔'}</span>`;}
 function renderFiles(){const c=$('#files');c.innerHTML='';FILES.forEach((it,i)=>{const d=document.createElement('div');d.className='frow';d.innerHTML=`${fmtLabel(it)}<span class="nm">${it.name}</span><button title="rimuovi">✕</button>`;d.querySelector('button').onclick=()=>{FILES.splice(i,1);autoMode();renderFiles();refresh();};c.appendChild(d);});$('#gen').disabled=FILES.length===0;}
-function compute(){const out=getOut(),items=itemsWithIdx();if(MODE==='poster')return computePoster(items,out,MM(+$('#overlap').value||0),orient);if(MODE==='grid')return computeGrid(items,out,orient);return computeAuto(items,out.an,orient);}
+function compute(){const out=getOut(),items=itemsWithIdx();if(MODE==='poster')return computePoster(items,out,MM(+$('#overlap').value||0),orient);if(MODE==='grid')return computeGrid(items,out,orient);if(MODE==='nup')return computeNup(items,out,orient,Math.max(2,Math.min(64,Math.round(+$('#nup').value||4))),MM(Math.max(0,+$('#nupm').value||0)));return computeAuto(items,out.an,orient);}
 function refresh(){const s=$('#summary');if(!FILES.length){s.classList.add('hidden');return;}s.classList.remove('hidden');
   const out=getOut(),items=itemsWithIdx();
   const tooBig=items.some(it=>!fitsSheet(it.w,it.h,out));
-  if(MODE!=='poster'&&tooBig){s.classList.add('warn');s.innerHTML='⚠ Un file è più grande del foglio di uscita: usa la modalità <b>Poster</b> per spezzarlo.';$('#gen').disabled=true;return;}
+  if(MODE!=='poster'&&MODE!=='nup'&&tooBig){s.classList.add('warn');s.innerHTML='⚠ Un file è più grande del foglio di uscita: usa la modalità <b>Poster</b> per spezzarlo.';$('#gen').disabled=true;return;}
   if(MODE==='auto'&&(out.an==null||items.some(it=>it.an==null))){s.classList.add('warn');s.innerHTML='⚠ In Auto servono formati A e un foglio in formato A. Usa <b>Griglia</b>.';$('#gen').disabled=true;return;}
   const res=compute();
   if(res.error){s.classList.add('warn');s.innerHTML='⚠ '+res.error;$('#gen').disabled=true;return;}
@@ -207,6 +227,7 @@ function refresh(){const s=$('#summary');if(!FILES.length){s.classList.add('hidd
   const copies=Math.max(1,+$('#copies').value||1),fmt=out.an!=null?'A'+out.an:`${(out.L/2.83465).toFixed(0)}×${(out.S/2.83465).toFixed(0)}`;
   let desc,pages;
   if(res.kind==='poster'){const tot=res.units.reduce((a,u)=>a+u.cols*u.rows,0);desc=res.units.map((u,i)=>`File ${i+1}: ${u.cols}×${u.rows}=${u.cols*u.rows} tasselli ${fmt}`).join('<br>');pages=tot;}
+  else if(res.nup){desc=res.sheets.map((sh,i)=>`Foglio ${i+1}: ${fmt} ${sh.size[0]>sh.size[1]?'orizz.':'vert.'} · ${sh.n} copie (${sh.cols}×${sh.rows}) · scala ${Math.round(sh.scale*100)}%${sh.rots?' · ruotate':''}`).join('<br>');pages=res.sheets.length;}
   else{desc=res.sheets.map((sh,i)=>`Foglio ${i+1}: ${fmt} ${sh.size[0]>sh.size[1]?'orizz.':'vert.'} · ${sh.n} celle · ${sh.rots} rot.`).join('<br>');pages=res.sheets.length;}
   s.innerHTML=desc+(copies>1?`<br><b>× ${copies}</b> = ${pages*copies} pagine totali`:'');
 }
