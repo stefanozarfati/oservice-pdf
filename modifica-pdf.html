@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modifica PDF · OService PDF Suite</title>
+<script src="./lib/pdf-lib-bundle.js"></script>
+<style>
+:root{--navy:#062A63;--orange:#F36A01;--rose:#BE185D;--bg:#f4f5f7;--line:#e2e5ea;--ink:#1f2733;--muted:#6b7280;--ok:#2F7D4F;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}html,body{margin:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
+header{background:var(--navy);color:#fff;padding:10px 20px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:200;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.homelink{color:#fff;text-decoration:none;font-weight:600;font-size:13px;background:rgba(255,255,255,.18);padding:6px 12px;border-radius:8px}
+.logo{height:40px;width:40px;object-fit:contain;display:block}
+header h1{font-size:19px;font-weight:700;margin:0}
+.wrap{max-width:760px;margin:24px auto;padding:0 16px}
+.intro{color:var(--muted);font-size:14.5px;margin:0 0 20px}
+.intro b{color:var(--ink)}
+.drop{position:relative;border:2px dashed #cfd6e0;border-radius:16px;background:#fff;padding:40px 24px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+.drop.drag{border-color:var(--rose);background:#FFF1F6}
+.drop .marker{width:52px;height:52px;margin:0 auto 14px;border-radius:50%;border:3px solid var(--rose);display:grid;place-items:center;background:#fff}
+.drop .marker::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--rose)}
+.drop h2{margin:0 0 4px;font-size:18px;font-weight:700;color:var(--navy)}
+.drop p{margin:0;color:var(--muted);font-size:13px}
+.status{padding:8px 20px;font-family:var(--mono);font-size:12.5px;color:var(--muted);min-height:34px;background:#fff;border-bottom:1px solid var(--line)}
+.status.err{color:#c0392b}
+.status.ok{color:var(--ok)}
+.kept{margin-top:14px;font-size:12.5px;color:var(--muted);background:#FFF1F6;border:1px solid #F5C6D8;border-radius:10px;padding:12px 14px}
+.kept b{color:var(--rose)}
+/* barra strumenti */
+.toolbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:10px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:60px;z-index:150}
+.grp{display:flex;align-items:center;gap:6px}
+.grp + .grp{padding-left:14px;border-left:1px solid var(--line)}
+.btn{border:1.5px solid var(--line);background:#fff;border-radius:9px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--ink)}
+.btn:hover:not(:disabled){border-color:#c3ccd8}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.on{border-color:var(--rose);background:#FFF1F6;color:var(--rose);box-shadow:0 0 0 3px rgba(190,24,93,.10)}
+.btn.primary{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn.primary:hover:not(:disabled){background:#0a3a86}
+.btn.danger{color:#b42318}
+.lbl{font-size:12px;color:var(--muted);font-weight:600}
+.pg{font-family:var(--mono);font-size:13px;min-width:54px;text-align:center}
+/* area di lavoro */
+.work{display:flex;align-items:flex-start;gap:0;height:calc(100vh - 160px);min-height:420px}
+.viewer{flex:1;overflow:auto;background:#d9dde3;padding:14px;height:100%;touch-action:pan-x pan-y pinch-zoom}
+.pagebox{position:relative;margin:0 auto;box-shadow:0 4px 20px rgba(0,0,0,.25);background:#fff;width:max-content}
+.pagebox canvas{display:block}
+#ov{position:absolute;left:0;top:0;cursor:crosshair}
+.side{width:268px;flex:none;background:#fff;border-left:1px solid var(--line);height:100%;overflow:auto;padding:14px}
+.side h3{margin:0 0 6px;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.side .box{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:14px;font-size:13px}
+.side .big{font-weight:700;color:var(--navy)}
+.side small{color:var(--muted);display:block;margin-top:4px;font-size:12px}
+.pad{display:grid;grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px);gap:4px;justify-content:center;margin:8px 0}
+.pad .btn{padding:0;font-size:16px;display:grid;place-items:center}
+.pad .c{grid-column:2;grid-row:2;display:grid;place-items:center;font-size:11px;color:var(--muted)}
+.step{display:flex;align-items:center;gap:6px;font-size:12.5px}
+.step input{width:70px;border:1.5px solid var(--line);border-radius:8px;padding:5px 8px;font-family:var(--mono);font-size:13px}
+.help{font-size:12px;color:var(--muted)}
+.help kbd{font-family:var(--mono);background:#f1f3f6;border:1px solid var(--line);border-radius:4px;padding:0 5px}
+@media(max-width:820px){.work{flex-direction:column;height:auto}.viewer{height:62vh;width:100%}.side{width:100%;height:auto;border-left:0;border-top:1px solid var(--line)}.toolbar{top:56px}}
+dialog{border:0;border-radius:16px;padding:0;max-width:520px;width:calc(100% - 32px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(6,42,99,.45)}
+.dlg{padding:20px 22px}
+.dlg h2{margin:0 0 4px;font-size:18px;color:var(--navy)}
+.dlg p{margin:6px 0;font-size:13.5px;color:var(--muted)}
+.dlg .opt{display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:14px}
+.dlg .opt small{display:block;color:var(--muted);font-size:12px}
+.dlg .info{font-family:var(--mono);font-size:12px;background:#f6f7f9;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:10px 0;white-space:pre-wrap}
+.dlg .row{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mono);font-size:11px;color:var(--muted);text-align:center}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" class="homelink" title="Torna alla home">&larr; Home</a>
+  <img class="logo" alt="OService" src="icon-192.png">
+  <h1>Modifica PDF</h1>
+</header>
+
+<div id="start" class="wrap">
+  <p class="intro">Sposta o elimina oggetti di un PDF (un punto di controllo di una mappa, una scritta, una foto) e <b>sostituisci le foto senza ricomprimerle</b>. Il resto della pagina non viene toccato. Tutto sul dispositivo, niente caricamenti.</p>
+  <div class="drop" id="drop">
+    <div class="marker"></div>
+    <h2>Trascina qui il PDF</h2>
+    <p>oppure tocca per sceglierlo dal dispositivo</p>
+    <input type="file" id="fileInput" accept="application/pdf" hidden>
+  </div>
+  <div class="kept">Prima versione: <b>sposta, elimina e sostituisci foto</b>. La modifica dei testi arriverà in una fase successiva.</div>
+</div>
+
+<div id="editor" hidden>
+  <div class="toolbar">
+    <div class="grp">
+      <button class="btn" id="btnOpen">Apri altro&hellip;</button>
+    </div>
+    <div class="grp" id="pager">
+      <button class="btn" id="pgPrev" title="Pagina precedente">&lsaquo;</button>
+      <span class="pg" id="pgInfo">1 / 1</span>
+      <button class="btn" id="pgNext" title="Pagina successiva">&rsaquo;</button>
+    </div>
+    <div class="grp">
+      <button class="btn" id="zOut" title="Riduci">&minus;</button>
+      <button class="btn" id="zFit" title="Adatta alla larghezza">Adatta</button>
+      <button class="btn" id="zIn" title="Ingrandisci">+</button>
+    </div>
+    <div class="grp">
+      <span class="lbl">Selezione:</span>
+      <button class="btn on" id="modeObj" title="Clic su un singolo oggetto">Oggetto</button>
+      <button class="btn" id="modeCtl" title="Clic su un cerchio di controllo: seleziona cerchio, puntino e numero">Controllo</button>
+    </div>
+    <div class="grp">
+      <button class="btn danger" id="btnDel" disabled>Elimina</button>
+      <button class="btn" id="btnPhoto" disabled>Sostituisci foto&hellip;</button>
+      <button class="btn" id="btnUndo" disabled title="Annulla (Ctrl+Z)">Annulla</button>
+    </div>
+    <div class="grp" style="margin-left:auto">
+      <button class="btn primary" id="btnSave" disabled>Salva PDF</button>
+    </div>
+  </div>
+  <div class="status" id="status"></div>
+  <div class="work">
+    <div class="viewer" id="viewer">
+      <div class="pagebox" id="pagebox"><canvas id="cv"></canvas><canvas id="ov"></canvas></div>
+    </div>
+    <aside class="side">
+      <h3>Selezione</h3>
+      <div class="box" id="selInfo"><span class="big">Nessuna</span><small>Fai clic su un oggetto della pagina.</small></div>
+      <h3>Sposta con precisione</h3>
+      <div class="box">
+        <div class="pad">
+          <span></span><button class="btn" id="nUp" disabled>&uarr;</button><span></span>
+          <button class="btn" id="nLeft" disabled>&larr;</button><span class="c">mm</span><button class="btn" id="nRight" disabled>&rarr;</button>
+          <span></span><button class="btn" id="nDown" disabled>&darr;</button><span></span>
+        </div>
+        <div class="step"><label for="stepMm">Passo</label><input id="stepMm" type="number" min="0.01" step="0.1" value="0.5"><span>mm</span></div>
+        <small>Con la tastiera: <kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd>; con <kbd>Maiusc</kbd> ×10; con <kbd>Alt</kbd> ÷10.</small>
+      </div>
+      <h3>Come si usa</h3>
+      <div class="help">
+        <b>Oggetto</b>: clic su una parte della pagina; trascinala per spostarla. <kbd>Maiusc</kbd>+clic aggiunge o toglie oggetti.<br><br>
+        <b>Controllo</b>: clic su un cerchio di un percorso per prendere insieme cerchio, puntino, numero e alone, senza i simboli di mappa sotto.<br><br>
+        <kbd>Canc</kbd> elimina, <kbd>Ctrl</kbd>+<kbd>Z</kbd> annulla, <kbd>Esc</kbd> deseleziona.
+      </div>
+    </aside>
+  </div>
+</div>
+
+<dialog id="photoDlg">
+  <div class="dlg">
+    <h2>Sostituisci foto</h2>
+    <p>La nuova foto va nel riquadro di quella selezionata. Un JPEG viene inserito <b>così com'è, senza ricomprimerlo</b>.</p>
+    <input type="file" id="photoFile" accept="image/jpeg,.jpg,.jpeg">
+    <div class="opt"><input type="radio" name="fit" id="fitCrop" value="crop" checked><label for="fitCrop"><b>Riempi il riquadro (ritaglia)</b><small>La foto copre tutto il riquadro; i bordi in eccesso vengono nascosti.</small></label></div>
+    <div class="opt"><input type="radio" name="fit" id="fitFit" value="fit"><label for="fitFit"><b>Adatta (mostra tutta la foto)</b><small>La foto sta intera nel riquadro; possono restare bordi vuoti.</small></label></div>
+    <div class="opt"><input type="checkbox" id="reduce300"><label for="reduce300"><b>Riduci a 300 dpi</b><small id="reduceNote">Alleggerisce il file, ma ricomprime la foto (qualità 92%).</small></label></div>
+    <div class="info" id="photoInfo">Scegli un file JPEG.</div>
+    <div class="row">
+      <button class="btn" id="photoCancel">Annulla</button>
+      <button class="btn primary" id="photoOk" disabled>Sostituisci</button>
+    </div>
+  </div>
+</dialog>
+
+<footer>Motore PDFium (lo stesso di Chrome, licenze MIT e Apache-2.0) &middot; gira in locale &middot; primo avvio: scarica ~4,6 MB, poi in cache</footer>
+
+<script type="module">
+const PDFLib = window.PDFLib;
+const $ = (id) => document.getElementById(id);
+const MM = 72 / 25.4;                       // punti per millimetro
+const OBJ = { TEXT: 1, PATH: 2, IMAGE: 3, SHADING: 4, FORM: 5 };
+const ACCENT = '#BE185D';
+
+/* ============================================================
+   MOTORE PDFium (strato sottile)
+   ============================================================ */
+let E = null;
+async function loadEngine() {
+  if (E) return E;
+  setStatus('Carico il motore PDF (circa 4,6 MB, solo la prima volta)…');
+  const mod = await import('./lib/pdfium/pdfium.js');
+  const resp = await fetch('./lib/pdfium/pdfium.wasm');
+  if (!resp.ok) throw new Error('Impossibile scaricare il motore PDF (errore ' + resp.status + ').');
+  const wasmBinary = await resp.arrayBuffer();
+  const w = await mod.init({ wasmBinary });
+  w.PDFiumExt_Init();
+  E = makeEngine(w);
+  return E;
+}
+function makeEngine(w) {
+  const M = w.pdfium;
+  const heap = () => M.HEAPU8 || new Uint8Array(M.wasmExports.memory.buffer);   // da rileggere dopo ogni chiamata che può far crescere la memoria
+  const malloc = (n) => M.wasmExports.malloc(n);
+  const free = (p) => M.wasmExports.free(p);
+  const gf = (p) => M.getValue(p, 'float');
+  const gi = (p) => M.getValue(p, 'i32');
+  const gu = (p) => M.getValue(p, 'i32') >>> 0;
+  const gd = (p) => M.getValue(p, 'double');
+  return {
+    w,
+    openDoc(bytes) {
+      const ptr = malloc(bytes.length);
+      heap().set(bytes, ptr);
+      const doc = w.FPDF_LoadMemDocument(ptr, bytes.length, '');
+      if (!doc) { free(ptr); const c = w.FPDF_GetLastError(); throw new Error(c === 4 ? 'Il PDF è protetto da password: per ora non è supportato.' : 'Non riesco ad aprire questo PDF (codice ' + c + ').'); }
+      return { doc, close() { w.FPDF_CloseDocument(doc); free(ptr); } };
+    },
+    bounds(o) { const p = malloc(16); const ok = w.FPDFPageObj_GetBounds(o, p, p + 4, p + 8, p + 12); const r = ok ? { l: gf(p), b: gf(p + 4), r: gf(p + 8), t: gf(p + 12) } : null; free(p); return r; },
+    color(fn, o) { const p = malloc(16); const ok = fn(o, p, p + 4, p + 8, p + 12); const c = ok ? { r: gu(p), g: gu(p + 4), b: gu(p + 8), a: gu(p + 12) } : null; free(p); return c; },
+    fillColor(o) { return this.color(w.FPDFPageObj_GetFillColor, o); },
+    strokeColor(o) { return this.color(w.FPDFPageObj_GetStrokeColor, o); },
+    matrix(o) { const p = malloc(24); const ok = w.FPDFPageObj_GetMatrix(o, p); const m = ok ? [0, 4, 8, 12, 16, 20].map((k) => gf(p + k)) : null; free(p); return m; },
+    drawMode(o) { const p = malloc(8); w.FPDFPath_GetDrawMode(o, p, p + 4); const r = [gi(p), gi(p + 4)]; free(p); return r; },
+    pixelSize(o) { const p = malloc(8); const ok = w.FPDFImageObj_GetImagePixelSize(o, p, p + 4); const r = ok ? { w: gu(p), h: gu(p + 4) } : null; free(p); return r; },
+    segType(o, k) { return w.FPDFPathSegment_GetType(w.FPDFPath_GetPathSegment(o, k)); },
+    // matrice affine dispositivo -> pagina (esatta, tiene conto di rotazione e CropBox)
+    viewAffine(page, vw, vh) {
+      const p = malloc(16);
+      const pt = (dx, dy) => { w.FPDF_DeviceToPage(page, 0, 0, vw, vh, 0, dx, dy, p, p + 8); return [gd(p), gd(p + 8)]; };
+      const o = pt(0, 0), a = pt(vw, 0), b = pt(0, vh);
+      free(p);
+      const A = { x0: o[0], y0: o[1], ax: (a[0] - o[0]) / vw, ay: (a[1] - o[1]) / vw, bx: (b[0] - o[0]) / vh, by: (b[1] - o[1]) / vh };
+      A.det = A.ax * A.by - A.bx * A.ay;
+      return A;
+    },
+    render(page, width, height) {
+      const bmp = w.FPDFBitmap_Create(width, height, 1);
+      w.FPDFBitmap_FillRect(bmp, 0, 0, width, height, 0xffffffff);
+      w.FPDF_RenderPageBitmap(bmp, page, 0, 0, width, height, 0, 1);
+      const buf = w.FPDFBitmap_GetBuffer(bmp), stride = w.FPDFBitmap_GetStride(bmp);
+      const h = heap();
+      const rgba = new Uint8ClampedArray(width * height * 4);
+      for (let y = 0; y < height; y++) {
+        let s = buf + y * stride, d = y * width * 4;
+        for (let x = 0; x < width; x++, s += 4, d += 4) { rgba[d] = h[s + 2]; rgba[d + 1] = h[s + 1]; rgba[d + 2] = h[s]; rgba[d + 3] = 255; }
+      }
+      w.FPDFBitmap_Destroy(bmp);
+      return rgba;
+    },
+    save(doc) {
+      const wr = w.PDFiumExt_OpenFileWriter();
+      if (!w.PDFiumExt_SaveAsCopy(doc, wr)) { w.PDFiumExt_CloseFileWriter(wr); throw new Error('Salvataggio interno non riuscito.'); }
+      const size = w.PDFiumExt_GetFileWriterSize(wr);
+      const buf = malloc(size);
+      w.PDFiumExt_GetFileWriterData(wr, buf, size);
+      const out = new Uint8Array(size); out.set(heap().subarray(buf, buf + size));
+      free(buf); w.PDFiumExt_CloseFileWriter(wr);
+      return out;
+    }
+  };
+}
+
+/* ============================================================
+   SELEZIONE (oggetto singolo e "controllo")
+   ============================================================ */
+function readObjects(page) {
+  const n = E.w.FPDFPage_CountObjects(page);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const h = E.w.FPDFPage_GetObject(page, i);
+    const type = E.w.FPDFPageObj_GetType(h);
+    const b = E.bounds(h) || { l: 0, b: 0, r: 0, t: 0 };
+    const o = { i, h, type, b, w: b.r - b.l, hh: b.t - b.b, cx: (b.l + b.r) / 2, cy: (b.b + b.t) / 2 };
+    o.area = o.w * o.hh;
+    const f = E.fillColor(h), s = E.strokeColor(h);
+    o.fill = f; o.stroke = s;
+    if (type === OBJ.PATH) {
+      const [fm, st] = E.drawMode(h);
+      o.filled = fm !== 0; o.stroked = !!st; o.segs = E.w.FPDFPath_CountSegments(h);
+      o.main = (o.filled && f && f.a > 0) ? f : (o.stroked ? s : null);
+    } else if (type === OBJ.TEXT) o.main = f;
+    out.push(o);
+  }
+  return out;
+}
+const similar = (a, b, tol = 60) => a && b && Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b) <= tol;
+const isWhite = (c) => c && c.r > 245 && c.g > 245 && c.b > 245;
+const gapBetween = (a, b) => Math.hypot(Math.max(0, Math.max(a.b.l, b.b.l) - Math.min(a.b.r, b.b.r)), Math.max(0, Math.max(a.b.b, b.b.b) - Math.min(a.b.t, b.b.t)));
+const overlaps = (a, b) => a.b.l < b.b.r && a.b.r > b.b.l && a.b.b < b.b.t && a.b.t > b.b.b;
+
+// Cerchio di controllo = tracciato solo contorno, rettangolo quasi quadrato, solo curve.
+// Codici segmento (verificati sui dati): 0 = linea, 1 = curva (3 per ogni curva), 2 = inizio.
+function isControlCircle(o) {
+  if (o.type !== OBJ.PATH || !o.stroked || (o.filled && o.fill && o.fill.a > 0)) return false;
+  const mx = Math.max(o.w, o.hh), mn = Math.min(o.w, o.hh);
+  if (mx < 4 || (mx - mn) / mx > 0.10) return false;
+  if (o.segs < 9 || o.segs > 40) return false;
+  let bez = 0, lin = 0;
+  for (let k = 0; k < o.segs; k++) { const t = E.segType(o.h, k); if (t === 1) bez++; else if (t === 0) lin++; }
+  return bez >= 12 && bez % 3 === 0 && lin <= 1;
+}
+function controlGroup(objs, circles, C) {
+  const D = Math.max(C.w, C.hh);
+  const members = new Set([C]);
+  for (const o of circles) if (o !== C && Math.hypot(o.cx - C.cx, o.cy - C.cy) < 0.08 * D) members.add(o);   // cerchi concentrici (arrivo)
+  const nearest = (o) => circles.reduce((best, c) => (Math.hypot(o.cx - c.cx, o.cy - c.cy) < Math.hypot(o.cx - best.cx, o.cy - best.cy) ? c : best), circles[0]);
+  const mine = (o) => { const n = nearest(o); return n === C || members.has(n); };
+  for (const o of objs) {                                   // puntino, cifre: stesso colore, piccoli, vicini, più vicini a questo cerchio che a un altro
+    if (members.has(o) || circles.includes(o)) continue;
+    if (o.type !== OBJ.PATH && o.type !== OBJ.TEXT) continue;
+    if (o.w > 1.6 * D || o.hh > 1.6 * D) continue;
+    if (!similar(o.main, C.main)) continue;
+    if (gapBetween(o, C) > 0.9 * D) continue;
+    if (!mine(o)) continue;
+    members.add(o);
+  }
+  const testi = [...members].filter((o) => o.type === OBJ.TEXT);   // alone bianco: testo o tracciato bianco (pieno o contorno) della misura del numero, sotto di esso
+  for (const o of objs) {
+    if (members.has(o) || (o.type !== OBJ.PATH && o.type !== OBJ.TEXT) || !isWhite(o.main)) continue;
+    if (o.w > 1.2 * D || o.hh > 1.2 * D) continue;
+    if (testi.some((t) => overlaps(o, t) && o.w <= 1.8 * t.w + 4 && o.hh <= 1.8 * t.hh + 4)) members.add(o);
+  }
+  return [...members].sort((a, b) => a.i - b.i);
+}
+function pickObject(objs, x, y, pad) {            // il più piccolo fra gli oggetti che contengono il punto
+  let best = null;
+  for (const o of objs) {
+    if (x < o.b.l - pad || x > o.b.r + pad || y < o.b.b - pad || y > o.b.t + pad) continue;
+    if (!best || o.area < best.area || (o.area === best.area && o.i > best.i)) best = o;
+  }
+  return best;
+}
+
+/* ============================================================
+   FOTO: JPEG, EXIF, matrici
+   ============================================================ */
+function parseJpeg(b) {
+  if (b.length < 4 || b[0] !== 0xFF || b[1] !== 0xD8) throw new Error('Questo file non è un JPEG. Per ora la sostituzione accetta solo JPEG.');
+  let i = 2, orient = 1, w = 0, h = 0, comps = 0;
+  while (i + 4 < b.length) {
+    if (b[i] !== 0xFF) { i++; continue; }
+    const m = b[i + 1];
+    if (m === 0xFF) { i++; continue; }
+    if (m === 0xD8 || (m >= 0xD0 && m <= 0xD7) || m === 0x01) { i += 2; continue; }
+    const len = (b[i + 2] << 8) | b[i + 3];
+    if (m === 0xE1 && b[i + 4] === 0x45 && b[i + 5] === 0x78 && b[i + 6] === 0x69 && b[i + 7] === 0x66) {      // "Exif"
+      const t = i + 10, le = b[t] === 0x49;
+      const r16 = (o) => le ? b[o] | (b[o + 1] << 8) : (b[o] << 8) | b[o + 1];
+      const r32 = (o) => le ? (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0 : ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+      const ifd = t + r32(t + 4), n = r16(ifd);
+      for (let k = 0; k < n; k++) { const e = ifd + 2 + k * 12; if (r16(e) === 0x0112) { const v = r16(e + 8); if (v >= 1 && v <= 8) orient = v; } }
+    }
+    if ((m >= 0xC0 && m <= 0xCF) && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) { h = (b[i + 5] << 8) | b[i + 6]; w = (b[i + 7] << 8) | b[i + 8]; comps = b[i + 9]; break; }
+    i += 2 + len;
+  }
+  if (!w || !h) throw new Error('JPEG non leggibile (dimensioni non trovate).');
+  return { w, h, comps, orient };
+}
+// Matrici [a b c d e f] in convenzione PDF (riga): mul(A,B) = prima A, poi B
+const mul = (A, B) => [A[0] * B[0] + A[1] * B[2], A[0] * B[1] + A[1] * B[3], A[2] * B[0] + A[3] * B[2], A[2] * B[1] + A[3] * B[3], A[4] * B[0] + A[5] * B[2] + B[4], A[4] * B[1] + A[5] * B[3] + B[5]];
+// Correzione dell'orientamento EXIF: immagine grezza (quadrato unitario) -> immagine vista dritta
+const EXIF_M = { 1: [1, 0, 0, 1, 0, 0], 2: [-1, 0, 0, 1, 1, 0], 3: [-1, 0, 0, -1, 1, 1], 4: [1, 0, 0, -1, 0, 1], 5: [0, -1, -1, 0, 1, 1], 6: [0, -1, 1, 0, 0, 1], 7: [0, 1, 1, 0, 0, 0], 8: [0, 1, -1, 0, 1, 0] };
+// Piano di posizionamento della nuova foto dentro il riquadro della vecchia (matrice M0: quadrato unitario -> pagina)
+function planPhoto(info, M0, mode) {
+  const swap = info.orient >= 5;
+  const ow = swap ? info.h : info.w, oh = swap ? info.w : info.h;           // dimensioni in pixel come si vede la foto
+  const W = Math.hypot(M0[0], M0[1]), H = Math.hypot(M0[2], M0[3]);         // riquadro in punti
+  const s = mode === 'crop' ? Math.max(W / ow, H / oh) : Math.min(W / ow, H / oh);   // punti per pixel
+  const dw = ow * s, dh = oh * s;
+  const S = [dw / W, 0, 0, dh / H, (W - dw) / 2 / W, (H - dh) / 2 / H];
+  const T = mul(EXIF_M[info.orient], S);
+  const dpi = ow / (dw / 72);
+  const visible = mode === 'crop' ? (W * H) / (dw * dh) : 1;
+  return { T, dw, dh, W, H, ow, oh, dpi, cropPct: Math.round((1 - visible) * 100) };
+}
+async function resampleJpeg(file, targetW) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const ratio = targetW / bmp.width;
+  const tw = Math.max(1, Math.round(bmp.width * ratio)), th = Math.max(1, Math.round(bmp.height * ratio));
+  const c = document.createElement('canvas'); c.width = tw; c.height = th;
+  const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, tw, th);
+  const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.92));
+  bmp.close && bmp.close();
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+/* ============================================================
+   STATO E INTERFACCIA
+   ============================================================ */
+const S = { doc: null, page: null, pageIndex: 0, pageCount: 0, pw: 0, ph: 0, objs: [], circles: [], controlOf: null, sel: [], mode: 'obj', zoom: 1, view: null, undo: [], fileName: 'documento', drag: null, lastNudge: 0 };
+const cv = $('cv'), ov = $('ov'), ctx = cv.getContext('2d'), octx = ov.getContext('2d');
+function setStatus(msg, kind) { const s = $('status'); s.textContent = msg || ''; s.className = 'status' + (kind ? ' ' + kind : ''); }
+const nf = (v, d = 1) => v.toFixed(d).replace('.', ',');
+
+async function loadBytes(bytes, pageIndex = 0) {
+  await loadEngine();
+  const d = E.openDoc(bytes);
+  if (S.page) { E.w.FPDF_ClosePage(S.page); S.page = null; }
+  if (S.doc) S.doc.close();
+  S.doc = d;
+  S.pageCount = E.w.FPDF_GetPageCount(d.doc);
+  if (!S.pageCount) throw new Error('Il PDF non contiene pagine.');
+  openPage(Math.min(pageIndex, S.pageCount - 1), true);
+}
+function openPage(idx, fit) {
+  if (S.page) E.w.FPDF_ClosePage(S.page);
+  S.pageIndex = idx;
+  S.page = E.w.FPDF_LoadPage(S.doc.doc, idx);
+  S.pw = E.w.FPDF_GetPageWidthF(S.page); S.ph = E.w.FPDF_GetPageHeightF(S.page);
+  S.sel = [];
+  refreshObjects();
+  $('pgInfo').textContent = (idx + 1) + ' / ' + S.pageCount;
+  $('pgPrev').disabled = idx === 0; $('pgNext').disabled = idx >= S.pageCount - 1;
+  if (fit) fitWidth(); else renderView();
+}
+function refreshObjects() {
+  S.objs = readObjects(S.page);
+  const cand = S.objs.filter(isControlCircle);
+  // un cerchio è un "controllo" solo se ha al centro un puntino (o un cerchio concentrico) dello stesso colore: scarta i simboli di mappa tondi
+  S.circles = cand.filter((c) => { const D = Math.max(c.w, c.hh); return S.objs.some((o) => o !== c && o.type === OBJ.PATH && similar(o.main, c.main) && Math.hypot(o.cx - c.cx, o.cy - c.cy) < 0.1 * D && (o.w < 0.3 * D || cand.includes(o))); });
+  S.controlOf = null;
+}
+function ensureControlMap() {
+  if (S.controlOf) return;
+  S.controlOf = new Map();
+  for (const c of S.circles) for (const m of controlGroup(S.objs, S.circles, c)) if (!S.controlOf.has(m.i)) S.controlOf.set(m.i, c);
+}
+function fitWidth() { const w = $('viewer').clientWidth - 30; S.zoom = Math.max(0.2, w / S.pw); renderView(); }
+function renderView() {
+  if (!S.page) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let pxW = Math.round(S.pw * S.zoom * dpr), pxH = Math.round(S.ph * S.zoom * dpr);
+  const cap = 5200; if (pxW > cap) { pxH = Math.round(pxH * cap / pxW); pxW = cap; }
+  cv.width = ov.width = pxW; cv.height = ov.height = pxH;
+  const cssW = Math.round(S.pw * S.zoom), cssH = Math.round(cssW * S.ph / S.pw);
+  cv.style.width = ov.style.width = cssW + 'px'; cv.style.height = ov.style.height = cssH + 'px';
+  const rgba = E.render(S.page, pxW, pxH);
+  ctx.putImageData(new ImageData(rgba, pxW, pxH), 0, 0);
+  const A = E.viewAffine(S.page, pxW, pxH);
+  S.view = { pxW, pxH, A };
+  drawOverlay();
+}
+// conversioni dispositivo <-> pagina
+const dev2page = (dx, dy) => { const A = S.view.A; return [A.x0 + A.ax * dx + A.bx * dy, A.y0 + A.ay * dx + A.by * dy]; };
+const page2dev = (px, py) => { const A = S.view.A; const X = px - A.x0, Y = py - A.y0; return [(A.by * X - A.bx * Y) / A.det, (-A.ay * X + A.ax * Y) / A.det]; };
+const rectToDev = (b) => { const pts = [page2dev(b.l, b.b), page2dev(b.r, b.b), page2dev(b.l, b.t), page2dev(b.r, b.t)]; const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]); return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }; };
+const selUnion = () => S.sel.reduce((u, o) => u ? { l: Math.min(u.l, o.b.l), b: Math.min(u.b, o.b.b), r: Math.max(u.r, o.b.r), t: Math.max(u.t, o.b.t) } : { ...o.b }, null);
+
+function drawOverlay(dx = 0, dy = 0) {                 // dx, dy: spostamento provvisorio in pixel (anteprima durante il trascinamento)
+  octx.clearRect(0, 0, ov.width, ov.height);
+  updateSelUI();
+  if (!S.sel.length) return;
+  const u = selUnion(), R = rectToDev(u);
+  if (dx || dy) {                                      // "fantasma": copia dei pixel sotto la selezione, spostata
+    octx.save(); octx.globalAlpha = 0.65;
+    octx.drawImage(cv, R.x, R.y, R.w, R.h, R.x + dx, R.y + dy, R.w, R.h);
+    octx.restore();
+  }
+  octx.save();
+  octx.translate(dx, dy);
+  octx.lineWidth = Math.max(1, ov.width / 900);
+  if (S.sel.length > 1) { octx.strokeStyle = 'rgba(190,24,93,.55)'; for (const o of S.sel) { const r = rectToDev(o.b); octx.strokeRect(r.x, r.y, r.w, r.h); } }
+  octx.strokeStyle = ACCENT; octx.setLineDash([6 * octx.lineWidth, 4 * octx.lineWidth]); octx.lineWidth *= 1.6;
+  const pd = 3 * octx.lineWidth; octx.strokeRect(R.x - pd, R.y - pd, R.w + 2 * pd, R.h + 2 * pd);
+  octx.restore();
+}
+function updateSelUI() {
+  const n = S.sel.length, box = $('selInfo');
+  const has = n > 0;
+  ['btnDel', 'nUp', 'nDown', 'nLeft', 'nRight'].forEach((id) => { $(id).disabled = !has; });
+  $('btnPhoto').disabled = !(n === 1 && S.sel[0].type === OBJ.IMAGE);
+  if (!has) { box.innerHTML = '<span class="big">Nessuna</span><small>Fai clic su un oggetto della pagina.</small>'; return; }
+  const u = selUnion(), wmm = (u.r - u.l) / MM, hmm = (u.t - u.b) / MM;
+  const names = { 1: 'testo', 2: 'tracciato', 3: 'immagine', 4: 'sfumatura', 5: 'gruppo' };
+  let title = n === 1 ? ('1 ' + (names[S.sel[0].type] || 'oggetto')) : (n + ' oggetti');
+  let extra = '';
+  if (n === 1 && S.sel[0].type === OBJ.IMAGE) {
+    const ps = E.pixelSize(S.sel[0].h);
+    if (ps) extra = '<small>' + ps.w + '×' + ps.h + ' px · circa ' + Math.round(ps.w / ((u.r - u.l) / 72)) + ' dpi</small>';
+  }
+  box.innerHTML = '<span class="big">' + title + '</span><small>' + nf(wmm) + ' × ' + nf(hmm) + ' mm · posizione ' + nf(u.l / MM) + ' ; ' + nf(u.b / MM) + ' mm (dal basso a sinistra)</small>' + extra;
+}
+function updateGlobalUI() {
+  $('btnUndo').disabled = S.undo.length === 0;
+  $('btnSave').disabled = !S.doc;
+}
+
+/* ---------- operazioni con annullamento ---------- */
+function snapshot() {                                  // stato PRIMA della modifica
+  const bytes = E.save(S.doc.doc);
+  S.undo.push({ bytes, page: S.pageIndex });
+  if (S.undo.length > 10) S.undo.shift();
+  updateGlobalUI();
+}
+async function undo() {
+  const st = S.undo.pop(); if (!st) return;
+  await loadBytes(st.bytes, st.page);
+  updateGlobalUI(); setStatus('Annullato.', 'ok');
+}
+function reselect(indices) { S.sel = indices.map((i) => S.objs[i]).filter(Boolean); }
+function moveSelection(dxPt, dyPt, coalesce) {
+  if (!S.sel.length) return;
+  const now = Date.now();
+  if (!(coalesce && now - S.lastNudge < 900 && S.undo.length)) snapshot();   // più frecce ravvicinate = un solo passo di annullamento
+  S.lastNudge = coalesce ? now : 0;
+  const idx = S.sel.map((o) => o.i);
+  for (const o of S.sel) E.w.FPDFPageObj_Transform(o.h, 1, 0, 0, 1, dxPt, dyPt);
+  E.w.FPDFPage_GenerateContent(S.page);
+  refreshObjects(); reselect(idx);
+  renderView();
+}
+function deleteSelection() {
+  if (!S.sel.length) return;
+  snapshot();
+  const n = S.sel.length;
+  for (const o of [...S.sel].sort((a, b) => b.i - a.i)) {
+    if (!E.w.FPDFPage_RemoveObject(S.page, o.h)) throw new Error('Eliminazione non riuscita su un oggetto.');
+    E.w.FPDFPageObj_Destroy(o.h);
+  }
+  E.w.FPDFPage_GenerateContent(S.page);
+  S.sel = [];
+  refreshObjects(); renderView();
+  setStatus('Eliminati ' + n + (n === 1 ? ' oggetto' : ' oggetti') + '. Ctrl+Z per annullare.', 'ok');
+}
+function nudge(dirX, dirY, shift, alt, coalesce = true) {     // dirX/dirY = direzione SULLO SCHERMO (+x destra, +y su)
+  const step = (parseFloat($('stepMm').value) || 0.5) * (shift ? 10 : 1) * (alt ? 0.1 : 1) * MM;
+  const A = S.view.A, k = step;
+  // direzione schermo -> pagina: destra = (ax, ay), su = -(bx, by) in unità dispositivo
+  const rx = A.ax, ry = A.ay, ux = -A.bx, uy = -A.by;
+  const rl = Math.hypot(rx, ry) || 1, ul = Math.hypot(ux, uy) || 1;
+  moveSelection(dirX * k * rx / rl + dirY * k * ux / ul, dirX * k * ry / rl + dirY * k * uy / ul, coalesce);
+}
+
+/* ---------- selezione col mouse ---------- */
+function eventDev(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; }
+function selectAtPoint(px, py, additive) {
+  const scale = S.view.pxW / S.pw, pad = 3 / scale;
+  let picked = null;
+  if (S.mode === 'ctl') {
+    ensureControlMap();
+    const o = pickObject(S.objs, px, py, pad);
+    let c = o ? S.controlOf.get(o.i) : null;
+    if (!c) {                                          // clic dentro l'ingombro di un cerchio ma su un simbolo sottostante
+      let best = null, bd = Infinity;
+      for (const k of S.circles) { if (px < k.b.l - pad || px > k.b.r + pad || py < k.b.b - pad || py > k.b.t + pad) continue; const d = Math.hypot(px - k.cx, py - k.cy); if (d < bd) { bd = d; best = k; } }
+      c = best;
+    }
+    if (!c) { if (!additive) S.sel = []; drawOverlay(); setStatus('Qui non c’è un cerchio di controllo. Usa "Oggetto" per scegliere singole parti.'); return; }
+    picked = controlGroup(S.objs, S.circles, c);
+  } else {
+    const o = pickObject(S.objs, px, py, pad);
+    if (!o) { if (!additive) S.sel = []; drawOverlay(); return; }
+    picked = [o];
+  }
+  if (additive) {
+    const all = picked.every((o) => S.sel.includes(o));
+    S.sel = all ? S.sel.filter((o) => !picked.includes(o)) : [...S.sel, ...picked.filter((o) => !S.sel.includes(o))];
+  } else S.sel = picked;
+  drawOverlay();
+  if (S.mode === 'ctl' && !additive) setStatus('Controllo selezionato: ' + picked.length + ' oggetti. Trascina o usa le frecce. Se manca qualcosa, Maiusc+clic in modalità Oggetto.');
+  else setStatus('');
+}
+ov.addEventListener('pointerdown', (e) => {
+  if (!S.page || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  const [dx, dy] = eventDev(e);
+  const inside = (() => { if (!S.sel.length) return false; const R = rectToDev(selUnion()), p = 6; return dx >= R.x - p && dx <= R.x + R.w + p && dy >= R.y - p && dy <= R.y + R.h + p; })();
+  if (inside && !e.shiftKey) {
+    S.drag = { x0: dx, y0: dy, moved: false, id: e.pointerId };
+    ov.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  } else {
+    const [px, py] = dev2page(dx, dy);
+    selectAtPoint(px, py, e.shiftKey);
+  }
+});
+ov.addEventListener('pointermove', (e) => {
+  if (!S.drag || e.pointerId !== S.drag.id) return;
+  const [dx, dy] = eventDev(e), ddx = dx - S.drag.x0, ddy = dy - S.drag.y0;
+  if (!S.drag.moved && Math.hypot(ddx, ddy) < 3) return;
+  S.drag.moved = true; drawOverlay(ddx, ddy);
+});
+ov.addEventListener('pointerup', (e) => {
+  if (!S.drag || e.pointerId !== S.drag.id) return;
+  const d = S.drag; S.drag = null;
+  const [dx, dy] = eventDev(e);
+  if (!d.moved) { const [px, py] = dev2page(dx, dy); selectAtPoint(px, py, false); return; }   // era un semplice clic su una zona già selezionata
+  const p0 = dev2page(d.x0, d.y0), p1 = dev2page(dx, dy);
+  try { moveSelection(p1[0] - p0[0], p1[1] - p0[1], false); } catch (err) { setStatus(err.message, 'err'); }
+});
+ov.addEventListener('pointercancel', () => { if (S.drag) { S.drag = null; drawOverlay(); } });
+
+/* ---------- tastiera ---------- */
+document.addEventListener('keydown', (e) => {
+  if (!S.doc || $('photoDlg').open) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;
+  const k = e.key;
+  try {
+    if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+    if (k === 'Escape') { S.sel = []; drawOverlay(); return; }
+    if (!S.sel.length) return;
+    if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
+    const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[k];
+    if (dir) { e.preventDefault(); nudge(dir[0], dir[1], e.shiftKey, e.altKey); }
+  } catch (err) { setStatus(err.message, 'err'); }
+});
+[['nUp', 0, 1], ['nDown', 0, -1], ['nLeft', -1, 0], ['nRight', 1, 0]].forEach(([id, x, y]) => $(id).addEventListener('click', (e) => { try { nudge(x, y, e.shiftKey, e.altKey); } catch (err) { setStatus(err.message, 'err'); } }));
+
+/* ---------- barra strumenti ---------- */
+$('modeObj').addEventListener('click', () => { S.mode = 'obj'; $('modeObj').classList.add('on'); $('modeCtl').classList.remove('on'); });
+$('modeCtl').addEventListener('click', () => { S.mode = 'ctl'; $('modeCtl').classList.add('on'); $('modeObj').classList.remove('on'); });
+$('btnDel').addEventListener('click', () => { try { deleteSelection(); } catch (err) { setStatus(err.message, 'err'); } });
+$('btnUndo').addEventListener('click', () => undo().catch((err) => setStatus(err.message, 'err')));
+$('pgPrev').addEventListener('click', () => openPage(S.pageIndex - 1, false));
+$('pgNext').addEventListener('click', () => openPage(S.pageIndex + 1, false));
+$('zIn').addEventListener('click', () => { S.zoom *= 1.25; renderView(); });
+$('zOut').addEventListener('click', () => { S.zoom = Math.max(0.15, S.zoom / 1.25); renderView(); });
+$('zFit').addEventListener('click', fitWidth);
+window.addEventListener('resize', () => { if (S.page) fitWidth(); });
+window.addEventListener('beforeunload', (e) => { if (S.undo.length) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ---------- apertura file ---------- */
+const drop = $('drop'), fileInput = $('fileInput');
+drop.addEventListener('click', () => fileInput.click());
+$('btnOpen').addEventListener('click', () => { if (!S.undo.length || confirm('Ci sono modifiche non salvate. Aprire un altro file e perderle?')) fileInput.click(); });
+['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('drag'); }));
+['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('drag'); }));
+drop.addEventListener('drop', (e) => { if (e.dataTransfer.files[0]) openFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) openFile(fileInput.files[0]); fileInput.value = ''; });
+async function openFile(f) {
+  try {
+    if (!/pdf$/i.test(f.type) && !/\.pdf$/i.test(f.name)) throw new Error('Questo non sembra un PDF.');
+    $('start').hidden = true; $('editor').hidden = false;
+    S.fileName = f.name.replace(/\.pdf$/i, ''); S.undo = [];
+    await loadBytes(new Uint8Array(await f.arrayBuffer()), 0);
+    updateGlobalUI();
+    setStatus('Pronto. Clic su un oggetto per selezionarlo, oppure scegli "Controllo" e clic su un cerchio del percorso.', 'ok');
+  } catch (err) { setStatus(err.message, 'err'); if (!S.doc) { $('start').hidden = false; $('editor').hidden = true; } }
+}
+
+/* ---------- salvataggio finale: pdf-lib copyPages = file pulito ---------- */
+async function cleanPdf(bytes) {
+  const { PDFDocument } = PDFLib;
+  const src = await PDFDocument.load(bytes, { updateMetadata: false });
+  const out = await PDFDocument.create();
+  const pages = await out.copyPages(src, src.getPageIndices());
+  pages.forEach((p) => out.addPage(p));
+  return await out.save();
+}
+$('btnSave').addEventListener('click', async () => {
+  try {
+    setStatus('Preparo il file…');
+    E.w.FPDFPage_GenerateContent(S.page);
+    const clean = await cleanPdf(E.save(S.doc.doc));
+    const url = URL.createObjectURL(new Blob([clean], { type: 'application/pdf' }));
+    const a = document.createElement('a'); a.href = url; a.download = S.fileName + '-modificato.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    S.undo = [];                                         // dopo il salvataggio non c'è più nulla da perdere
+    updateGlobalUI();
+    setStatus('Salvato: ' + S.fileName + '-modificato.pdf (' + (clean.length / 1048576).toFixed(2).replace('.', ',') + ' MB).', 'ok');
+  } catch (err) { setStatus('Salvataggio non riuscito: ' + err.message, 'err'); }
+});
+
+/* ---------- sostituzione foto ---------- */
+const dlg = $('photoDlg');
+let photo = null;            // { file, info, bytes }
+function photoPlan() {
+  if (!photo || !S.sel[0]) return null;
+  const M0 = E.matrix(S.sel[0].h);
+  if (!M0) return null;
+  const mode = document.querySelector('input[name=fit]:checked').value;
+  return { M0, mode, plan: planPhoto(photo.info, M0, mode) };
+}
+function refreshPhotoInfo() {
+  const p = photoPlan();
+  if (!p) { $('photoInfo').textContent = 'Scegli un file JPEG.'; $('photoOk').disabled = true; return; }
+  const { plan, mode } = p, i = photo.info;
+  const ori = i.orient !== 1 ? '\nOrientamento EXIF ' + i.orient + ': la foto viene raddrizzata senza ricomprimerla.' : '';
+  $('photoInfo').textContent = 'Foto: ' + i.w + '×' + i.h + ' px' + (i.comps === 4 ? ' (CMYK)' : '') + '\nRiquadro: ' + nf(plan.W / MM) + ' × ' + nf(plan.H / MM) + ' mm\n' +
+    (mode === 'crop' ? (plan.cropPct > 0 ? 'Ritaglio: circa ' + plan.cropPct + '% della foto resta fuori.' : 'Stesse proporzioni: nessun ritaglio.') : 'Adatta: la foto sta intera nel riquadro.') +
+    '\nRisoluzione sulla pagina: circa ' + Math.round(plan.dpi) + ' dpi' + ori;
+  const r = $('reduce300'); const canReduce = plan.dpi > 300.5;
+  r.disabled = !canReduce; if (!canReduce) r.checked = false;
+  $('reduceNote').textContent = canReduce ? 'Alleggerisce il file, ma ricomprime la foto (qualità 92%).' : 'Non serve: la foto è già a 300 dpi o meno.';
+  $('photoOk').disabled = false;
+}
+$('btnPhoto').addEventListener('click', () => { photo = null; $('photoFile').value = ''; $('reduce300').checked = false; refreshPhotoInfo(); $('photoInfo').textContent = 'Scegli un file JPEG.'; $('photoOk').disabled = true; dlg.showModal(); });
+$('photoCancel').addEventListener('click', () => dlg.close());
+$('photoFile').addEventListener('change', async () => {
+  const f = $('photoFile').files[0]; if (!f) return;
+  try { const bytes = new Uint8Array(await f.arrayBuffer()); photo = { file: f, bytes, info: parseJpeg(bytes) }; refreshPhotoInfo(); }
+  catch (err) { photo = null; $('photoInfo').textContent = err.message; $('photoOk').disabled = true; }
+});
+document.querySelectorAll('input[name=fit]').forEach((r) => r.addEventListener('change', refreshPhotoInfo));
+$('photoOk').addEventListener('click', async () => {
+  try {
+    $('photoOk').disabled = true;
+    const target = S.sel[0], pageIdx = S.pageIndex;
+    let { M0, mode, plan } = photoPlan();
+    let bytes = photo.bytes, info = photo.info;
+    if ($('reduce300').checked && plan.dpi > 300.5) {                   // ricompressione facoltativa
+      setStatus('Riduco la foto a 300 dpi…');
+      const tw = Math.round(plan.ow * 300 / plan.dpi);
+      bytes = await resampleJpeg(photo.file, tw); info = parseJpeg(bytes); plan = planPhoto(info, M0, mode);
+    }
+    dlg.close();
+    setStatus('Sostituisco la foto…');
+    snapshot();
+    if (!E.w.FPDFPage_RemoveObject(S.page, target.h)) throw new Error('Non riesco a togliere la vecchia foto.');
+    E.w.FPDFPageObj_Destroy(target.h);
+    E.w.FPDFPage_GenerateContent(S.page);
+    const raw = E.save(S.doc.doc);
+    const L = PDFLib;
+    const src = await L.PDFDocument.load(raw, { updateMetadata: false });
+    const page = src.getPage(pageIdx);
+    const img = await src.embedJpg(bytes);
+    const name = page.node.newXObject('Foto', img.ref);
+    const ops = [L.pushGraphicsState(), L.concatTransformationMatrix(...M0)];
+    if (mode === 'crop') ops.push(L.rectangle(0, 0, 1, 1), L.clip(), L.endPath());      // il ritaglio: tutto ciò che esce dal riquadro vecchio è nascosto
+    ops.push(L.concatTransformationMatrix(...plan.T), L.drawObject(name), L.popGraphicsState());
+    page.pushOperators(...ops);
+    const out = await src.save();
+    await loadBytes(new Uint8Array(out), pageIdx);
+    updateGlobalUI();
+    setStatus('Foto sostituita' + (bytes === photo.bytes ? ' senza ricomprimerla' : ' (ridotta a 300 dpi)') + '. La nuova foto è in primo piano sulla pagina. Ctrl+Z per annullare.', 'ok');
+  } catch (err) { setStatus('Sostituzione non riuscita: ' + err.message, 'err'); if (dlg.open) dlg.close(); }
+});
+
+window.__S = S; window.__test = { readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
+</script>
+</body>
+</html>
