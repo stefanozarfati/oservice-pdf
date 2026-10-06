@@ -76,7 +76,7 @@ input[type=number]{width:74px}
     <div class="row"><label>Verso rotazione</label>
       <div class="seg" id="rotdir"><button data-v="ccw" class="on">Antiorario</button><button data-v="cw">Orario</button></div></div>
     <div class="row"><label>Segni di taglio</label>
-      <label class="switch"><input id="crop" type="checkbox" checked><span class="slider"></span></label></div>
+      <label class="switch"><input id="crop" type="checkbox"><span class="slider"></span></label></div>
     <div class="row"><label>Copie (pagine)</label><input id="copies" type="number" value="1" min="1" max="500" step="1"></div>
 
     <div class="actions"><button id="gen" class="btn primary" disabled>Genera PDF</button><button id="dl" class="btn ghost" disabled>Scarica</button></div>
@@ -170,6 +170,36 @@ function imgBox(file){const[s,l]=imgFormatMM(),land=file.pxW>=file.pxH;const wmm
 async function loadImage(buf,mime){const url=URL.createObjectURL(new Blob([buf],{type:mime||'image/*'}));const im=await new Promise((res,rej)=>{const x=new Image();x.onload=()=>res(x);x.onerror=()=>rej(new Error('decodifica'));x.src=url;});return{pxW:im.naturalWidth,pxH:im.naturalHeight,el:im};}
 async function toPng(el){const cv=document.createElement('canvas');cv.width=el.naturalWidth;cv.height=el.naturalHeight;cv.getContext('2d').drawImage(el,0,0);const blob=await new Promise(r=>cv.toBlob(r,'image/png'));return new Uint8Array(await blob.arrayBuffer());}
 async function buildImgPDF(file,boxW,boxH){const doc=await PDFDocument.create();const img=file.imgMime==='image/jpeg'?await doc.embedJpg(file.imgBytes):await doc.embedPng(file.imgBytes);const page=doc.addPage([boxW,boxH]);const sc=Math.min(boxW/img.width,boxH/img.height),w=img.width*sc,h=img.height*sc;page.drawImage(img,{x:(boxW-w)/2,y:(boxH-h)/2,width:w,height:h});return await doc.save();}
+// Le annotazioni (es. cerchi/forme aggiunti con Anteprima) NON sono parte del contenuto della pagina:
+// embedPdf le scarterebbe. Qui le "appiattisco" nel contenuto (disegno del loro aspetto, posizionato sul loro riquadro).
+async function flattenAnnots(bytes){
+  try{
+    const L=PDFLib,N=L.PDFName,doc=await PDFDocument.load(bytes,{updateMetadata:false});
+    const page=doc.getPage(0),annots=page.node.Annots();if(!annots||!annots.size())return bytes;
+    const ctx=doc.context,num=x=>{x=ctx.lookup(x);return x&&x.asNumber?x.asNumber():(x&&typeof x.value==='function'?x.value():0);};
+    const arr=a=>{a=ctx.lookup(a);return a&&a.size?Array.from({length:a.size()},(_,i)=>num(a.get(i))):null;};
+    const ops=[];let k=0;
+    for(let i=0;i<annots.size();i++){
+      const an=ctx.lookup(annots.get(i));if(!an||!an.get)continue;
+      const st=an.get(N.of('Subtype'));if(st&&st.toString()==='/Popup')continue;
+      const fl=an.get(N.of('F'));const f=fl?num(fl):0;if(f&2||f&32)continue;                 // nascosta / non visibile
+      const ap=ctx.lookup(an.get(N.of('AP')));if(!ap||!ap.get)continue;
+      let nref=ap.get(N.of('N')),nobj=ctx.lookup(nref);
+      if(nobj&&nobj.get&&!nobj.contents){const as=an.get(N.of('AS'));nref=as?nobj.get(as):null;nobj=nref?ctx.lookup(nref):null;}   // più stati (es. caselle): prendo quello attivo
+      if(!nobj||!nobj.dict||!(nref instanceof L.PDFRef))continue;
+      const rect=arr(an.get(N.of('Rect')));if(!rect)continue;
+      const R=[Math.min(rect[0],rect[2]),Math.min(rect[1],rect[3]),Math.max(rect[0],rect[2]),Math.max(rect[1],rect[3])];
+      const bb=arr(nobj.dict.get(N.of('BBox')))||[0,0,R[2]-R[0],R[3]-R[1]],m=arr(nobj.dict.get(N.of('Matrix')))||[1,0,0,1,0,0];
+      const pts=[[bb[0],bb[1]],[bb[2],bb[1]],[bb[0],bb[3]],[bb[2],bb[3]]].map(([x,y])=>[m[0]*x+m[2]*y+m[4],m[1]*x+m[3]*y+m[5]]);
+      const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]),tx0=Math.min(...xs),ty0=Math.min(...ys),tw=Math.max(...xs)-tx0,th=Math.max(...ys)-ty0;
+      const sx=tw>1e-9?(R[2]-R[0])/tw:1,sy=th>1e-9?(R[3]-R[1])/th:1;
+      const name=page.node.newXObject('Annot'+(k++),nref);
+      ops.push(L.pushGraphicsState(),L.concatTransformationMatrix(sx,0,0,sy,R[0]-tx0*sx,R[1]-ty0*sy),L.drawObject(name),L.popGraphicsState());
+    }
+    if(!ops.length)return bytes;
+    page.pushOperators(...ops);return new Uint8Array(await doc.save());
+  }catch(e){console.warn('flattenAnnots',e);return bytes;}
+}
 // ---- stato + UI ----
 let FILES=[],MODE='auto',orient='auto',ROTDIR='ccw',gridAuto=false,url=null;
 function getOut(){const v=$('#outfmt').value;if(v==='custom'){let a=+$('#outW').value||210,b=+$('#outH').value||297;return{an:null,L:MM(Math.max(a,b)),S:MM(Math.min(a,b))};}const an=+v;return{an,L:MM(ASIZE[an][0]),S:MM(ASIZE[an][1])};}
@@ -239,10 +269,10 @@ $('#gen').onclick=async()=>{
     const copies=Math.max(1,Math.min(500,+$('#copies').value||1)),crop=$('#crop').checked,O=MM(+$('#overlap').value||0);
     const its=itemsWithIdx();
     if(desc.kind==='poster'){
-      const embs={};for(const u of desc.units){const f=FILES[u.idx];const bytes=f.isImage?await buildImgPDF(f,its[u.idx].w,its[u.idx].h):f.bytes;const[e]=await out.embedPdf(bytes,[0]);embs[u.idx]={e,inW:e.width,inH:e.height};}
+      const embs={};for(const u of desc.units){const f=FILES[u.idx];const bytes=f.isImage?await buildImgPDF(f,its[u.idx].w,its[u.idx].h):f.bytes;const[e]=await out.embedPdf(await flattenAnnots(bytes),[0]);embs[u.idx]={e,inW:e.width,inH:e.height};}
       for(let cp=0;cp<copies;cp++)for(const u of desc.units){const{e,inW,inH}=embs[u.idx];for(let r=0;r<u.rows;r++)for(let c=0;c<u.cols;c++){const page=out.addPage([u.SW,u.SH]);page.drawPage(e,{x:-(c*u.stepW),y:u.SH+r*u.stepH-inH,width:inW,height:inH});if(crop)posterMarks(page,u,r,c,O);}}
     }else{
-      const embMap=[];for(let i=0;i<FILES.length;i++){let bytes=FILES[i].isImage?await buildImgPDF(FILES[i],its[i].w,its[i].h):FILES[i].bytes;const[e]=await out.embedPdf(bytes,[0]);embMap[i]=e;}
+      const embMap=[];for(let i=0;i<FILES.length;i++){let bytes=FILES[i].isImage?await buildImgPDF(FILES[i],its[i].w,its[i].h):FILES[i].bytes;const[e]=await out.embedPdf(await flattenAnnots(bytes),[0]);embMap[i]=e;}
       for(const sh of desc.sheets)for(let cp=0;cp<copies;cp++){const page=out.addPage(sh.size);for(const p of sh.plan)placePage(page,embMap[p.idx],p.w,p.h,p.region,p.rot,ROTDIR);if(crop)drawCrop(page,sh.plan,sh.size);}
     }
     const bytes=await out.save();if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));

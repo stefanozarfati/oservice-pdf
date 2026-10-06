@@ -935,7 +935,7 @@ async function fillTextFonts() {
   const grp = (label, items) => { if (!items.length) return; const g = document.createElement('optgroup'); g.label = label; items.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; g.appendChild(o); }); sel.appendChild(g); };
   grp('Standard (leggeri)', Object.keys(STD).map((k) => ['std:' + k, k]));
   try {
-    const m = await FontManager.loadManifest();
+    const m = await FontManager.reloadManifest();
     m.fonts.forEach((f) => { textFonts[f.id] = f; });
     grp('Font della Suite', m.fonts.filter((f) => !f.pool).map((f) => [f.id, f.name]));
     grp('Personali (importati)', m.fonts.filter((f) => f.pool).map((f) => [f.id, f.name]));

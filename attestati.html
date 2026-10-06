@@ -86,7 +86,6 @@ textarea{width:100%;min-height:96px;border:1px solid #cfd4dc;border-radius:8px;p
       <button class="addbtn" id="adddeco">＋ Separatore</button>
       <button class="addbtn" id="addlogofld">＋ Logo</button>
       <button class="addbtn" id="addfont">＋ Font</button>
-      <button class="addbtn" id="addsysfont" style="display:none">🖥️ Font del Mac</button>
     </div>
     <input type="file" id="logofile" accept="image/*" multiple style="display:none">
     <input type="file" id="fontfile" accept=".ttf,.otf,.woff,.woff2,font/*" multiple style="display:none">
@@ -143,12 +142,13 @@ async function syncPoolFonts(){
     const m=await FontManager.loadManifest();
     for(const f of m.fonts.filter(x=>x.pool)){
       if(FONTS[f.name])continue;
-      FONTS[f.name]={css:"'"+f.name+"',sans-serif",packaged:f.id,weight:400};
+      const w=(f.weights||[]).includes(400)?400:(f.weights||[400])[0];FONTS[f.name]={css:"'"+f.name+"',sans-serif",packaged:f.id,weight:w};
     }
-    await Promise.all(m.fonts.filter(x=>x.pool).map(f=>FontManager.ensurePreviewFace(f.id,400).catch(()=>{})));
+    await Promise.all(m.fonts.filter(x=>x.pool).map(f=>FontManager.ensurePreviewFace(f.id,FONTS[f.name]?FONTS[f.name].weight:400).catch(()=>{})));
   }catch(e){console.warn('pool font',e);}
 }
-const poolReady=syncPoolFonts();
+let poolReady=syncPoolFonts();
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){poolReady=FontManager.reloadManifest().then(syncPoolFonts).then(()=>{try{renderFields();renderOverlay();}catch(_){}}).catch(()=>{});}});
 // Precarica (fetch + FontFace.load) tutti i font del pacchetto usati dai FIELDS correnti,
 // PRIMA di disegnare l'anteprima: canvas.measureText() (wrapByMeasure) deve misurare col
 // font vero fin dal primo render, non con un fallback che sballerebbe l'auto-riduzione.
@@ -293,21 +293,6 @@ $('#fontfile').onchange=async(e)=>{
 // estraggono i byte veri e si tratta esattamente come un font caricato da file: stessa
 // incorporazione nel PDF, stesso salvataggio/ripristino del progetto, senza dover
 // richiedere di nuovo il permesso a ogni riapertura.
-if(FontManager.systemFontsSupported())$('#addsysfont').style.display='';
-$('#addsysfont').onclick=async()=>{
-  const picked=await FontManager.pickSystemFont();
-  if(picked==='denied'){ alert('Chrome non ha dato il permesso di leggere i font del computer.\nControlla nell\'icona del lucchetto/impostazioni del sito che "Fonts" sia consentito, poi riprova.'); return; }
-  if(!picked)return;
-  const variant=FontManager.bestSystemVariant(picked.variants,false,false);
-  const blob=await variant.blob();
-  const bytes=new Uint8Array(await blob.arrayBuffer());
-  let key=picked.family;
-  if(FONTS[key])key=key+' (Mac)';
-  FONTBYTES[key]=bytes;
-  FONTS[key]={css:"'"+picked.family+"',sans-serif",custom:true,bytesKey:key,system:true};
-  try{const ab=_ab(bytes);const ff=new FontFace(picked.family,ab);await ff.load();document.fonts.add(ff);}catch(err){console.warn('font di sistema',key,err);}
-  renderFontList();renderFields();renderOverlay();
-};
 function renderFontList(){const el=$('#fontlist');if(!el)return;const custom=Object.keys(FONTS).filter(k=>!FONTS[k].packaged&&!FONTS[k].std).reverse();el.innerHTML=custom.length?('Font caricati: '+custom.map(k=>`<span class="chip">${FONTS[k].system?'🖥️ ':''}${k}<button data-k="${k}">✕</button></span>`).join(' ')):'';el.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.dataset.k;delete FONTS[k];delete FONTBYTES[k];FIELDS.forEach(f=>{if(f.font===k)f.font='Cinzel';});renderFontList();renderFields();renderOverlay();});}
 // ---- LOGO ----
 $('#addlogofld').onclick=()=>{if(LOGOS.length){const nf={id:nextId++,kind:'logo',label:'Logo',logoId:LOGOS[0].id,w:18,x:20,y:42};FIELDS.unshift(nf);sel=nf.id;renderFields();renderOverlay();}else{pendingNewLogoField=true;$('#logofile').click();}};

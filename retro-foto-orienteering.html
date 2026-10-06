@@ -194,7 +194,6 @@ textarea{min-height:56px;resize:vertical;line-height:1.35}
         style="width:100%;height:38px;padding:2px;border:1px solid var(--line);
         border-radius:8px;background:var(--bg);cursor:pointer">
     </div>
-    <button type="button" id="addSysFontBtn" class="fmtBtn" style="display:none;width:100%;margin-top:8px">🖥️ Usa un font del computer…</button>
     <div class="row2" style="grid-template-columns:repeat(5,1fr);margin-top:8px">
       <button type="button" id="boldBtn" class="fmtBtn" style="font-weight:800">B</button>
       <button type="button" id="italicBtn" class="fmtBtn" style="font-style:italic">I</button>
@@ -251,7 +250,6 @@ textarea{min-height:56px;resize:vertical;line-height:1.35}
         <option value="'Roboto Mono', monospace">Roboto Mono</option>
       </optgroup>
     </select>
-    <button type="button" id="addSysLabelFontBtn" class="fmtBtn" style="display:none;width:100%;margin-top:6px">🖥️ Usa un font del computer…</button>
 
     <label>Dimensione lettere/numeri: <span id="labelSizeReadout">automatica</span></label>
     <input type="range" id="labelSizeSlider" min="60" max="200" value="100" step="5" style="width:100%">
@@ -443,44 +441,6 @@ function systemVariantDescriptors(styleStr){
   const s = (styleStr||'').toLowerCase();
   return { weight: /bold|semibold|black|heavy/.test(s) ? '700' : '400', italic: /italic|oblique/.test(s) };
 }
-if(FontManager.systemFontsSupported())$('addSysFontBtn').style.display='';
-$('addSysFontBtn').addEventListener('click', async ()=>{
-  const picked = await FontManager.pickSystemFont();
-  if(picked==='denied'){ alert('Chrome non ha dato il permesso di leggere i font del computer.\nControlla nell\'icona del lucchetto/impostazioni del sito che "Fonts" sia consentito, poi riprova.'); return; }
-  if(!picked) return;
-  SYSTEM_FONTS[picked.family] = picked.variants;
-  await Promise.all(picked.variants.map(v=>{
-    const d = systemVariantDescriptors(v.style);
-    return FontManager.ensureSystemPreviewFace(v, d.weight, d.italic).catch(()=>{});
-  }));
-  const cssValue = "'"+picked.family+"', sans-serif";
-  if(!Array.from($('fontSel').options).some(o=>o.value===cssValue)){
-    const opt = document.createElement('option');
-    opt.value = cssValue; opt.textContent = '🖥️ '+picked.family;
-    $('fontSel').appendChild(opt);
-  }
-  $('fontSel').value = cssValue;
-  applyStyleToSelection('fontFamily', cssValue);
-});
-
-if(FontManager.systemFontsSupported())$('addSysLabelFontBtn').style.display='';
-$('addSysLabelFontBtn').addEventListener('click', async ()=>{
-  const picked = await FontManager.pickSystemFont();
-  if(picked==='denied'){ alert('Chrome non ha dato il permesso di leggere i font del computer.\nControlla nell\'icona del lucchetto/impostazioni del sito che "Fonts" sia consentito, poi riprova.'); return; }
-  if(!picked) return;
-  SYSTEM_FONTS[picked.family] = picked.variants;
-  const regular = FontManager.bestSystemVariant(picked.variants, false, false);
-  await FontManager.ensureSystemPreviewFace(regular, 400, false).catch(()=>{});
-  const cssValue = "'"+picked.family+"', sans-serif";
-  if(!Array.from($('labelFontSel').options).some(o=>o.value===cssValue)){
-    const opt = document.createElement('option');
-    opt.value = cssValue; opt.textContent = '🖥️ '+picked.family;
-    $('labelFontSel').appendChild(opt);
-  }
-  $('labelFontSel').value = cssValue;
-  recompute();
-});
-
 function updateLabelSizeReadout(){
   $('labelSizeReadout').textContent = ($('labelSizeSlider').value==100) ? 'automatica' : ($('labelSizeSlider').value+'%');
 }
@@ -605,6 +565,8 @@ function serializeProject(){
     porient: $('porient').value,
     headerHTML: $('htext').innerHTML,
     footerHTML: $('ftext').innerHTML,
+    headerAlign: $('htext').style.textAlign || '',
+    footerAlign: $('ftext').style.textAlign || '',
     ncount: +$('ncount').value || 0,
     labelScheme: $('labelScheme').value,
     labelFont: $('labelFontSel').value,
@@ -622,6 +584,8 @@ function applyProjectData(data){
   $('porient').value = data.porient || 'v';
   $('htext').innerHTML = data.headerHTML || '';
   $('ftext').innerHTML = data.footerHTML || '';
+  $('htext').style.textAlign = data.headerAlign || '';
+  $('ftext').style.textAlign = data.footerAlign || '';
   $('ncount').value = data.ncount || 0;
   $('labelScheme').value = data.labelScheme || 'letters';
   $('labelFontSel').value = data.labelFont || '';
@@ -817,19 +781,22 @@ async function syncPoolFonts(){
     const m = await FontManager.loadManifest();
     const pool = m.fonts.filter(f=>f.pool);
     if(!pool.length) return;
-    const sel = $('fontSel');
-    let g = sel.querySelector('optgroup[data-pool]');
-    if(!g){ g = document.createElement('optgroup'); g.label = 'Personali'; g.setAttribute('data-pool','1'); sel.appendChild(g); }
-    for(const f of pool){
-      if(FONT_LIB[f.name]) continue;
-      FONT_LIB[f.name] = f.id;
-      const o = document.createElement('option');
-      o.value = "'"+f.name+"', sans-serif"; o.textContent = f.name; g.appendChild(o);
+    for(const id of ['fontSel','labelFontSel']){
+      const sel = $(id); if(!sel) continue;
+      let g = sel.querySelector('optgroup[data-pool]');
+      if(!g){ g = document.createElement('optgroup'); g.label = 'Personali'; g.setAttribute('data-pool','1'); sel.appendChild(g); }
+      for(const f of pool){
+        const v = "'"+f.name+"', sans-serif";
+        if(Array.from(sel.options).some(o=>o.value===v)) continue;
+        const o = document.createElement('option'); o.value = v; o.textContent = f.name; g.appendChild(o);
+      }
     }
+    for(const f of pool) FONT_LIB[f.name] = f.id;
     await Promise.all(pool.map(f=>preloadFamilyForPreview(f.id).catch(()=>{})));
   }catch(e){ console.warn('pool font', e); }
 }
 syncPoolFonts();
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') FontManager.reloadManifest().then(syncPoolFonts).catch(()=>{}); });
 // Font veri installati sul computer, aggiunti dall'utente in questa sessione (solo
 // Chrome/Edge desktop): { nomeFamiglia: [FontData, ...] }. Non persistono nel progetto
 // salvato — se il progetto viene riaperto senza il font ancora selezionato in sessione,
