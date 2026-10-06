@@ -112,6 +112,7 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
       <button class="btn" id="btnAddPhoto" title="Aggiungi una foto (JPEG, PNG, HEIC) e clicca dove metterla">Aggiungi foto&hellip;</button>
       <input type="file" id="addPhotoFile" accept="image/jpeg,image/png,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif" hidden>
       <button class="btn" id="btnAddText" title="Aggiungi un testo e clicca dove metterlo">Aggiungi testo&hellip;</button>
+      <button class="btn" id="btnEditText" disabled title="Modifica il testo selezionato (anche doppio clic)">Modifica testo&hellip;</button>
       <button class="btn" id="btnPhoto" disabled>Sostituisci foto&hellip;</button>
       <button class="btn" id="btnUndo" disabled title="Annulla (Ctrl+Z)">Annulla</button>
     </div>
@@ -171,7 +172,7 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
 
 <dialog id="textDlg">
   <div class="dlg">
-    <h2>Aggiungi testo</h2>
+    <h2 id="txtTitle">Aggiungi testo</h2>
     <p>Il testo resta testo (selezionabile) e il font viene incorporato nel PDF. Per i font tuoi: importali dalla pagina <b>Font</b> della Home.</p>
     <textarea id="txtVal" rows="3" style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:8px;padding:8px;font-size:15px;font-family:inherit" placeholder="Scrivi qui il testo (Invio = nuova riga)"></textarea>
     <div class="step" style="margin-top:10px"><label for="txtFont" style="min-width:48px">Font</label><select id="txtFont" style="flex:1;border:1.5px solid var(--line);border-radius:8px;padding:6px;font-size:13px"></select></div>
@@ -237,6 +238,18 @@ function makeEngine(w) {
     fillColor(o) { return this.color(w.FPDFPageObj_GetFillColor, o); },
     strokeColor(o) { return this.color(w.FPDFPageObj_GetStrokeColor, o); },
     matrix(o) { const p = malloc(24); const ok = w.FPDFPageObj_GetMatrix(o, p); const m = ok ? [0, 4, 8, 12, 16, 20].map((k) => gf(p + k)) : null; free(p); return m; },
+    textInfo(page, o) {                                   // testo, corpo, nome font e colore di un oggetto di testo
+      const tp = w.FPDFText_LoadPage(page); let text = '';
+      if (tp) {
+        const n = w.FPDFTextObj_GetText(o, tp, 0, 0);
+        if (n > 2) { const p = malloc(n); w.FPDFTextObj_GetText(o, tp, p, n); const h = heap(); text = new TextDecoder('utf-16le').decode(h.slice(p, p + n - 2)); free(p); }
+        w.FPDFText_ClosePage(tp);
+      }
+      const fp = malloc(4); const okS = w.FPDFTextObj_GetFontSize(o, fp); const size = okS ? gf(fp) : 12; free(fp);
+      let name = ''; const font = w.FPDFTextObj_GetFont(o);
+      if (font) { const need = w.FPDFFont_GetBaseFontName(font, 0, 0); if (need > 1) { const p = malloc(need); w.FPDFFont_GetBaseFontName(font, p, need); name = new TextDecoder().decode(heap().slice(p, p + need - 1)); free(p); } }
+      return { text, size, name, color: this.fillColor(o), m: this.matrix(o) };
+    },
     drawMode(o) { const p = malloc(8); w.FPDFPath_GetDrawMode(o, p, p + 4); const r = [gi(p), gi(p + 4)]; free(p); return r; },
     pixelSize(o) { const p = malloc(8); const ok = w.FPDFImageObj_GetImagePixelSize(o, p, p + 4); const r = ok ? { w: gu(p), h: gu(p + 4) } : null; free(p); return r; },
     segPoint(o, k) { const seg = w.FPDFPath_GetPathSegment(o, k); const p = malloc(8); w.FPDFPathSegment_GetPoint(seg, p, p + 4); const r = [gf(p), gf(p + 4)]; free(p); return { x: r[0], y: r[1], t: w.FPDFPathSegment_GetType(seg), close: !!w.FPDFPathSegment_GetClose(seg) }; },
@@ -591,6 +604,7 @@ function updateSelUI() {
   const has = n > 0;
   ['btnDel', 'nUp', 'nDown', 'nLeft', 'nRight'].forEach((id) => { $(id).disabled = !has; });
   $('btnPhoto').disabled = !(n === 1 && S.sel[0].type === OBJ.IMAGE);
+  $('btnEditText').disabled = !(n >= 1 && S.sel.every((o) => o.type === OBJ.TEXT));
   $('dimW').disabled = $('dimH').disabled = !has;
   if (!has) { $('dimW').value = ''; $('dimH').value = ''; }
   else { const u0 = selUnion(); $('dimW').value = ((u0.r - u0.l) / MM).toFixed(2); $('dimH').value = ((u0.t - u0.b) / MM).toFixed(2); }
@@ -950,10 +964,12 @@ async function textSample() {
 }
 ['txtFont', 'txtBold', 'txtItalic'].forEach((id) => $(id).addEventListener('change', textSample));
 $('txtVal').addEventListener('input', () => { $('txtOk').disabled = !$('txtVal').value.trim(); textSample(); });
-$('btnAddText').addEventListener('click', async () => { await fillTextFonts(); textSample(); $('txtOk').disabled = !$('txtVal').value.trim(); textDlg.showModal(); $('txtVal').focus(); });
+$('btnAddText').addEventListener('click', async () => { S.textEdit = null; $('txtTitle').textContent = 'Aggiungi testo'; $('txtOk').textContent = 'Poi clicca sulla pagina'; await fillTextFonts(); textSample(); $('txtOk').disabled = !$('txtVal').value.trim(); textDlg.showModal(); $('txtVal').focus(); });
 $('txtCancel').addEventListener('click', () => textDlg.close());
+textDlg.addEventListener('close', () => { setTimeout(() => { if (!textDlg.open) S.textEdit = null; }, 0); });
 $('txtOk').addEventListener('click', () => {
   const size = Math.max(1, Math.min(500, parseFloat($('txtSize').value) || 14));
+  if (S.textEdit) { const sp = { text: $('txtVal').value.replace(/\s+$/, ''), font: $('txtFont').value, bold: $('txtBold').checked, italic: $('txtItalic').checked, size, color: $('txtColor').value }; textDlg.close(); applyTextEdit(sp); return; }
   S.pending = { text: { text: $('txtVal').value.replace(/\s+$/, ''), font: $('txtFont').value, bold: $('txtBold').checked, italic: $('txtItalic').checked, size, color: $('txtColor').value } };
   textDlg.close(); ov.style.cursor = 'text'; setStatus('Clic sulla pagina nel punto dove mettere il testo (angolo in alto a sinistra). Esc per annullare.');
 });
@@ -963,13 +979,13 @@ async function embedTextFont(doc, sp) {
   const c = fontCaps(sp.font);
   return FontManager.embedPackagedFont(doc, sp.font, sp.bold && c.bold ? c.wb : c.wr, sp.italic && c.italic);
 }
-async function drawTextOnPage(raw, pageIdx, sp, px, py) {
+async function drawTextOnPage(raw, pageIdx, sp, px, py, baseline) {
   const L = PDFLib;
   const src = await L.PDFDocument.load(raw, { updateMetadata: false });
   src.registerFontkit(window.fontkit);
   const font = await embedTextFont(src, sp), page = src.getPage(pageIdx);
   const c = sp.color.replace('#', ''), col = L.rgb(parseInt(c.slice(0, 2), 16) / 255, parseInt(c.slice(2, 4), 16) / 255, parseInt(c.slice(4, 6), 16) / 255);
-  const lh = sp.size * 1.2, asc = font.heightAtSize(sp.size, { descender: false });
+  const lh = sp.lh || sp.size * 1.2, asc = baseline ? 0 : font.heightAtSize(sp.size, { descender: false });
   sp.text.split(/\r?\n/).forEach((ln, i) => { if (ln) page.drawText(ln, { x: px, y: py - asc - i * lh, size: sp.size, font, color: col }); });
   return new Uint8Array(await src.save());
 }
@@ -984,6 +1000,54 @@ async function placeText(sp, px, py) {
     setStatus('Testo aggiunto. Trascinalo, ridimensionalo o eliminalo; Ctrl+Z annulla.', 'ok');
   } catch (err) { await undo().catch(() => {}); setStatus('Testo non aggiunto: ' + (/encode|WinAnsi|glyph/i.test(err.message) ? 'il font scelto non contiene qualche carattere. Prova un altro font.' : err.message), 'err'); }
 }
+
+/* ---------- modificare un testo già presente ---------- */
+const hex2 = (v) => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, '0');
+function matchTextFont(name) {                        // dal nome del font nel PDF al font della Suite più simile
+  const raw = (name || '').replace(/^[A-Z]{6}\+/, ''), low = raw.toLowerCase().replace(/[\s_-]/g, '');
+  const bold = /bold|black|heavy|semibold|demi/.test(low), italic = /italic|oblique/.test(low);
+  const base = low.replace(/(bold|black|heavy|semibold|demi|italic|oblique|regular|roman|medium|light|mt|ps)/g, '');
+  let best = null, bl = 0;
+  for (const f of Object.values(textFonts || {})) { const n = f.name.toLowerCase().replace(/[\s_-]/g, ''); if (base.startsWith(n) || base === n || (n.length > 3 && base.includes(n))) { if (n.length > bl) { best = f.id; bl = n.length; } } }
+  if (best) return { font: best, bold, italic, exact: true };
+  if (/courier|mono/.test(low)) return { font: 'std:Courier', bold, italic, exact: false };
+  if (/times|serif|georgia|garamond|minion/.test(low) && !/sans/.test(low)) return { font: 'std:Times', bold, italic, exact: false };
+  return { font: 'std:Helvetica', bold, italic, exact: /helvetica|arial/.test(low) };
+}
+async function openTextEdit() {
+  if (!S.sel.length || !S.sel.every((o) => o.type === OBJ.TEXT)) return;
+  const infos = S.sel.map((o) => ({ o, ...E.textInfo(S.page, o.h) }));
+  if (infos.some((t) => !t.m || Math.abs(t.m[1]) > 0.02 * Math.hypot(t.m[0], t.m[1]) || Math.abs(t.m[2]) > 0.02 * Math.hypot(t.m[2], t.m[3]))) { setStatus('Questo testo è ruotato o inclinato: per ora non si può modificare (si può spostare, ridimensionare o eliminare).', 'err'); return; }
+  infos.sort((a, b) => b.m[5] - a.m[5] || a.m[4] - b.m[4]);            // righe dall'alto al basso
+  const t0 = infos[0], eff = (t) => t.size * Math.hypot(t.m[0], t.m[1]);
+  await fillTextFonts();
+  const mt = matchTextFont(t0.name);
+  S.textEdit = { objs: infos.map((t) => t.o), x: t0.m[4], y: t0.m[5], lh: infos.length > 1 ? Math.abs(infos[0].m[5] - infos[infos.length - 1].m[5]) / (infos.length - 1) : 0, orig: infos.map((t) => t.text).join('\n'), fontName: t0.name, exact: mt.exact };
+  $('txtTitle').textContent = 'Modifica testo'; $('txtOk').textContent = 'Applica'; $('txtOk').disabled = false;
+  $('txtVal').value = S.textEdit.orig; $('txtFont').value = mt.font; syncTextCaps();
+  $('txtBold').checked = mt.bold && !$('txtBold').disabled; $('txtItalic').checked = mt.italic && !$('txtItalic').disabled;
+  $('txtSize').value = Math.round(eff(t0) * 100) / 100;
+  const c = t0.color; $('txtColor').value = c ? '#' + hex2(c.r) + hex2(c.g) + hex2(c.b) : '#000000';
+  textSample(); textDlg.showModal(); $('txtVal').focus();
+  setStatus(mt.exact ? '' : 'Font originale del PDF: «' + (t0.name || 'sconosciuto') + '». Non è tra i font della Suite: ho scelto uno simile, puoi cambiarlo.');
+}
+async function applyTextEdit(sp) {
+  const T = S.textEdit; S.textEdit = null;
+  if (!sp.text.trim()) { setStatus('Testo vuoto: per toglierlo usa Elimina.', 'err'); return; }
+  try {
+    setStatus('Applico la modifica…'); snapshot();
+    const before = S.objs.length - T.objs.length;
+    for (const o of T.objs) { if (!E.w.FPDFPage_RemoveObject(S.page, o.h)) throw new Error('Non riesco a togliere il vecchio testo.'); E.w.FPDFPageObj_Destroy(o.h); }
+    E.w.FPDFPage_GenerateContent(S.page);
+    if (T.lh) sp.lh = T.lh;
+    const out = await drawTextOnPage(E.save(S.doc.doc), S.pageIndex, sp, T.x, T.y, true);
+    const pageIdx = S.pageIndex; await loadBytes(out, pageIdx);
+    S.sel = S.objs.slice(before).filter((o) => o.type === OBJ.TEXT); drawOverlay(); updateGlobalUI();
+    setStatus('Testo modificato. Ctrl+Z annulla.', 'ok');
+  } catch (err) { await undo().catch(() => {}); setStatus('Modifica non riuscita: ' + (/encode|WinAnsi|glyph/i.test(err.message) ? 'il font scelto non contiene qualche carattere. Prova un altro font.' : err.message), 'err'); }
+}
+$('btnEditText').addEventListener('click', openTextEdit);
+ov.addEventListener('dblclick', () => { if (S.sel.length && S.sel.every((o) => o.type === OBJ.TEXT)) openTextEdit(); });
 $('photoOk').addEventListener('click', async () => {
   try {
     $('photoOk').disabled = true;
@@ -1008,7 +1072,7 @@ $('photoOk').addEventListener('click', async () => {
   } catch (err) { setStatus('Sostituzione non riuscita: ' + err.message, 'err'); if (dlg.open) dlg.close(); }
 });
 
-window.__S = S; window.__test = { placePending, placeText, drawTextOnPage, readImage, resizeSelection, handleAt, handlePos, hitAll, hitObject, readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
+window.__S = S; window.__test = { openTextEdit, applyTextEdit, placePending, placeText, drawTextOnPage, readImage, resizeSelection, handleAt, handlePos, hitAll, hitObject, readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
 </script>
 </body>
 </html>
