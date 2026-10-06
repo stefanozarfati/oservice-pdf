@@ -213,6 +213,8 @@ function makeEngine(w) {
     matrix(o) { const p = malloc(24); const ok = w.FPDFPageObj_GetMatrix(o, p); const m = ok ? [0, 4, 8, 12, 16, 20].map((k) => gf(p + k)) : null; free(p); return m; },
     drawMode(o) { const p = malloc(8); w.FPDFPath_GetDrawMode(o, p, p + 4); const r = [gi(p), gi(p + 4)]; free(p); return r; },
     pixelSize(o) { const p = malloc(8); const ok = w.FPDFImageObj_GetImagePixelSize(o, p, p + 4); const r = ok ? { w: gu(p), h: gu(p + 4) } : null; free(p); return r; },
+    segPoint(o, k) { const seg = w.FPDFPath_GetPathSegment(o, k); const p = malloc(8); w.FPDFPathSegment_GetPoint(seg, p, p + 4); const r = [gf(p), gf(p + 4)]; free(p); return { x: r[0], y: r[1], t: w.FPDFPathSegment_GetType(seg), close: !!w.FPDFPathSegment_GetClose(seg) }; },
+    strokeWidth(o) { const p = malloc(4); const ok = w.FPDFPageObj_GetStrokeWidth(o, p); const r = ok ? gf(p) : 1; free(p); return r; },
     segType(o, k) { return w.FPDFPathSegment_GetType(w.FPDFPath_GetPathSegment(o, k)); },
     // matrice affine dispositivo -> pagina (esatta, tiene conto di rotazione e CropBox)
     viewAffine(page, vw, vh) {
@@ -313,13 +315,69 @@ function controlGroup(objs, circles, C) {
   }
   return [...members].sort((a, b) => a.i - b.i);
 }
-function pickObject(objs, x, y, pad) {            // il più piccolo fra gli oggetti che contengono il punto
-  let best = null;
-  for (const o of objs) {
-    if (x < o.b.l - pad || x > o.b.r + pad || y < o.b.b - pad || y > o.b.t + pad) continue;
-    if (!best || o.area < best.area || (o.area === best.area && o.i > best.i)) best = o;
+// ---- Selezione "alla Acrobat": si clicca sul disegno vero (linea, puntino, riempimento), non sul suo rettangolo ----
+function geometry(o) {                               // sotto-percorsi in coordinate pagina, curve spezzate in tratti
+  if (o.geo) return o.geo;
+  const m = E.matrix(o.h) || [1, 0, 0, 1, 0, 0];
+  const T = (x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+  const subs = []; let cur = null, bez = [];
+  const n = o.segs;
+  for (let k = 0; k < n; k++) {
+    const sg = E.segPoint(o.h, k), P = T(sg.x, sg.y);
+    if (sg.t === 2) { cur = { pts: [P], closed: false }; subs.push(cur); bez = []; }
+    else if (sg.t === 0) { if (!cur) { cur = { pts: [P], closed: false }; subs.push(cur); } else cur.pts.push(P); bez = []; }
+    else {                                           // curva: 3 punti consecutivi (due di controllo + arrivo)
+      bez.push(P);
+      if (bez.length === 3 && cur) {
+        const p0 = cur.pts[cur.pts.length - 1], [p1, p2, p3] = bez;
+        for (let i = 1; i <= 8; i++) { const t = i / 8, u = 1 - t; cur.pts.push([u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0], u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]]); }
+        bez = [];
+      }
+    }
+    if (sg.close && cur) cur.closed = true;
   }
-  return best;
+  const sc = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2])) || 1;
+  o.geo = { subs, half: (E.strokeWidth(o.h) * sc) / 2 };
+  return o.geo;
+}
+function distSeg(px, py, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+  let t = l2 ? ((px - a[0]) * dx + (py - a[1]) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
+}
+function inPoly(px, py, pts) {                       // regola pari-dispari
+  let c = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i], b = pts[j];
+    if ((a[1] > py) !== (b[1] > py) && px < ((b[0] - a[0]) * (py - a[1])) / (b[1] - a[1]) + a[0]) c = !c;
+  }
+  return c;
+}
+function hitObject(o, x, y, tol) {                   // vero se il punto cade sul disegno dell'oggetto (tolleranza tol in punti)
+  if (x < o.b.l - tol || x > o.b.r + tol || y < o.b.b - tol || y > o.b.t + tol) return false;
+  if (o.type !== OBJ.PATH) return true;              // testo, immagini, gruppi: il loro ingombro
+  const visibleFill = o.filled && !(o.fill && o.fill.a === 0);
+  if (!visibleFill && !o.stroked) return false;
+  const g = geometry(o);
+  if (visibleFill) {
+    const flat = []; for (const sb of g.subs) if (sb.pts.length > 2) flat.push(sb.pts);
+    // pari-dispari su tutti i sotto-percorsi insieme (buchi inclusi)
+    let c = false; for (const pts of flat) if (inPoly(x, y, pts)) c = !c;
+    if (c) return true;
+  }
+  const reach = (o.stroked ? g.half : 0) + tol;
+  for (const sb of g.subs) {
+    const p = sb.pts, n = p.length;
+    for (let i = 0; i + 1 < n; i++) if (distSeg(x, y, p[i], p[i + 1]) <= reach) return true;
+    if ((sb.closed || visibleFill) && n > 2 && distSeg(x, y, p[n - 1], p[0]) <= reach) return true;
+    if (n === 1 && Math.hypot(x - p[0][0], y - p[0][1]) <= reach) return true;
+  }
+  return false;
+}
+function hitAll(objs, x, y, tol) {                   // dal più in alto al più in basso (come l'ordine di disegno)
+  const out = [];
+  for (const o of objs) if (hitObject(o, x, y, tol)) out.push(o);
+  return out.reverse();
 }
 
 /* ============================================================
@@ -378,7 +436,7 @@ async function resampleJpeg(file, targetW) {
 /* ============================================================
    STATO E INTERFACCIA
    ============================================================ */
-const S = { doc: null, page: null, pageIndex: 0, pageCount: 0, pw: 0, ph: 0, objs: [], circles: [], controlOf: null, sel: [], mode: 'obj', zoom: 1, view: null, undo: [], fileName: 'documento', drag: null, lastNudge: 0 };
+const S = { doc: null, page: null, pageIndex: 0, pageCount: 0, pw: 0, ph: 0, objs: [], circles: [], controlOf: null, sel: [], mode: 'obj', zoom: 1, view: null, undo: [], fileName: 'documento', drag: null, lastNudge: 0, dirty: false, lastHit: null };
 const cv = $('cv'), ov = $('ov'), ctx = cv.getContext('2d'), octx = ov.getContext('2d');
 function setStatus(msg, kind) { const s = $('status'); s.textContent = msg || ''; s.className = 'status' + (kind ? ' ' + kind : ''); }
 const nf = (v, d = 1) => v.toFixed(d).replace('.', ',');
@@ -479,14 +537,14 @@ function updateGlobalUI() {
 /* ---------- operazioni con annullamento ---------- */
 function snapshot() {                                  // stato PRIMA della modifica
   const bytes = E.save(S.doc.doc);
-  S.undo.push({ bytes, page: S.pageIndex });
+  S.undo.push({ bytes, page: S.pageIndex }); S.dirty = true;
   if (S.undo.length > 10) S.undo.shift();
   updateGlobalUI();
 }
 async function undo() {
   const st = S.undo.pop(); if (!st) return;
   await loadBytes(st.bytes, st.page);
-  updateGlobalUI(); setStatus('Annullato.', 'ok');
+  S.dirty = true; updateGlobalUI(); setStatus('Annullato.', 'ok');
 }
 function reselect(indices) { S.sel = indices.map((i) => S.objs[i]).filter(Boolean); }
 function moveSelection(dxPt, dyPt, coalesce) {
@@ -529,7 +587,8 @@ function selectAtPoint(px, py, additive) {
   let picked = null;
   if (S.mode === 'ctl') {
     ensureControlMap();
-    const o = pickObject(S.objs, px, py, pad);
+    const hits = hitAll(S.objs, px, py, pad);
+    const o = hits.find((h) => S.controlOf.has(h.i));
     let c = o ? S.controlOf.get(o.i) : null;
     if (!c) {                                          // clic dentro l'ingombro di un cerchio ma su un simbolo sottostante
       let best = null, bd = Infinity;
@@ -539,9 +598,13 @@ function selectAtPoint(px, py, additive) {
     if (!c) { if (!additive) S.sel = []; drawOverlay(); setStatus('Qui non c’è un cerchio di controllo. Usa "Oggetto" per scegliere singole parti.'); return; }
     picked = controlGroup(S.objs, S.circles, c);
   } else {
-    const o = pickObject(S.objs, px, py, pad);
-    if (!o) { if (!additive) S.sel = []; drawOverlay(); return; }
-    picked = [o];
+    const hits = hitAll(S.objs, px, py, pad);
+    if (!hits.length) { if (!additive) S.sel = []; drawOverlay(); S.lastHit = null; return; }
+    let k = 0;                                         // secondo clic nello stesso punto = passa all'oggetto sotto
+    const same = S.lastHit && Math.hypot(S.lastHit.x - px, S.lastHit.y - py) < 2 * pad && S.sel.length === 1;
+    if (same) { const cur = hits.indexOf(S.sel[0]); if (cur >= 0) k = (cur + 1) % hits.length; }
+    S.lastHit = { x: px, y: py };
+    picked = [hits[k]];
   }
   if (additive) {
     const all = picked.every((o) => S.sel.includes(o));
@@ -608,12 +671,12 @@ $('zIn').addEventListener('click', () => { S.zoom *= 1.25; renderView(); });
 $('zOut').addEventListener('click', () => { S.zoom = Math.max(0.15, S.zoom / 1.25); renderView(); });
 $('zFit').addEventListener('click', fitWidth);
 window.addEventListener('resize', () => { if (S.page) fitWidth(); });
-window.addEventListener('beforeunload', (e) => { if (S.undo.length) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
 
 /* ---------- apertura file ---------- */
 const drop = $('drop'), fileInput = $('fileInput');
 drop.addEventListener('click', () => fileInput.click());
-$('btnOpen').addEventListener('click', () => { if (!S.undo.length || confirm('Ci sono modifiche non salvate. Aprire un altro file e perderle?')) fileInput.click(); });
+$('btnOpen').addEventListener('click', () => { if (!S.dirty || confirm('Ci sono modifiche non salvate. Aprire un altro file e perderle?')) fileInput.click(); });
 ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('drag'); }));
 ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('drag'); }));
 drop.addEventListener('drop', (e) => { if (e.dataTransfer.files[0]) openFile(e.dataTransfer.files[0]); });
@@ -622,7 +685,7 @@ async function openFile(f) {
   try {
     if (!/pdf$/i.test(f.type) && !/\.pdf$/i.test(f.name)) throw new Error('Questo non sembra un PDF.');
     $('start').hidden = true; $('editor').hidden = false;
-    S.fileName = f.name.replace(/\.pdf$/i, ''); S.undo = [];
+    S.fileName = f.name.replace(/\.pdf$/i, ''); S.undo = []; S.dirty = false;
     await loadBytes(new Uint8Array(await f.arrayBuffer()), 0);
     updateGlobalUI();
     setStatus('Pronto. Clic su un oggetto per selezionarlo, oppure scegli "Controllo" e clic su un cerchio del percorso.', 'ok');
@@ -647,7 +710,7 @@ $('btnSave').addEventListener('click', async () => {
     const a = document.createElement('a'); a.href = url; a.download = S.fileName + '-modificato.pdf';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
-    S.undo = [];                                         // dopo il salvataggio non c'è più nulla da perdere
+    S.dirty = false;                                     // salvato: nessun avviso di modifiche perse (l'annulla resta disponibile)
     updateGlobalUI();
     setStatus('Salvato: ' + S.fileName + '-modificato.pdf (' + (clean.length / 1048576).toFixed(2).replace('.', ',') + ' MB).', 'ok');
   } catch (err) { setStatus('Salvataggio non riuscito: ' + err.message, 'err'); }
@@ -718,7 +781,7 @@ $('photoOk').addEventListener('click', async () => {
   } catch (err) { setStatus('Sostituzione non riuscita: ' + err.message, 'err'); if (dlg.open) dlg.close(); }
 });
 
-window.__S = S; window.__test = { readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
+window.__S = S; window.__test = { hitAll, hitObject, readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
 </script>
 </body>
 </html>
