@@ -1,4 +1,4 @@
-const CACHE='oservice-suite-v32';
+const CACHE='oservice-suite-v33';
 const ASSETS=[
   './','./index.html','./attestati.html','./impaginatore.html','./comprimi.html','./classifiche.html','./retro-foto-orienteering.html','./manifest.json',
   './gs/gs.js',  // gs.wasm (~15MB) NON in precache: cache-first al primo uso
@@ -39,7 +39,9 @@ self.addEventListener('fetch',e=>{
   if(isHTML){
     // network-first: quando online prende sempre la versione aggiornata; offline ripiega sulla cache
     e.respondWith(
-      fetch(e.request).then(resp=>{
+      // cache:'no-cache' = chiede sempre al server se la pagina è cambiata, invece di usare la copia
+      // tenuta dal browser per 10 minuti (GitHub Pages manda max-age=600)
+      fetch(e.request,{cache:'no-cache'}).catch(()=>fetch(e.request)).then(resp=>{
         if(resp.ok){const cp=resp.clone();caches.open(CACHE).then(c=>{try{c.put(e.request,cp);}catch(_){}});}
         return resp;
       }).catch(()=>caches.match(e.request).then(r=>r||caches.match('./index.html')))
