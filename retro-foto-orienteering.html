@@ -890,7 +890,7 @@ async function exportPDF(){
   btn.textContent = '⏳ Creo il PDF…'; btn.disabled = true;
   const warnings = [];
   try{
-    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+    const { PDFDocument, StandardFonts, rgb, AFRelationship } = PDFLib;
     const dpi = +$('exportDpi').value || 300;
 
     let [w,h] = FORMATS[$('pformat').value];
@@ -994,6 +994,32 @@ async function exportPDF(){
         page.drawImage(embedded, {x: lg.xmm*MM_PT, y: PH-(lg.ymm+lg.hmm)*MM_PT, width: lg.wmm*MM_PT, height: lg.hmm*MM_PT});
       }catch(e){
         warnings.push('Un logo non è stato incluso (file non leggibile).');
+      }
+    }
+
+    // Allegato nascosto (invisibile aprendo il PDF normalmente) con lettera + risposta
+    // di ogni riquadro, nello stesso ordine riga-per-riga in cui sono disegnati sopra —
+    // letto automaticamente dal coordinatore di Foto Orienteering al posto dell'OCR
+    // (che a volte legge male una cifra), se presente. Solo se la griglia è entrata
+    // nello spazio disponibile (stesso 'g' della sezione foto sopra): senza una griglia
+    // valida l'ordine/il conteggio delle celle non sarebbe affidabile.
+    if(g && availHmm>0){
+      try{
+        const cellsData = [];
+        for(let i=0;i<N;i++){
+          const labelTxt = (labelOverrides[i]!==undefined)?labelOverrides[i]:generateLabel(i,$('labelScheme').value);
+          cellsData.push({ letter: labelTxt, answer: answerData[i]||'' });
+        }
+        const attachPayload = JSON.stringify({ source:'retro-foto-orienteering', version:1, count:N, cols:g.cols, cells:cellsData });
+        await doc.attach(new TextEncoder().encode(attachPayload), 'foto-orienteering-griglia.json', {
+          mimeType: 'application/json',
+          description: 'Dati griglia per import automatico in Foto Orienteering (lettera + risposta per riquadro) — ignorare se non si usa quell\'app.',
+          afRelationship: AFRelationship.Supplement
+        });
+      }catch(e){
+        // Mai bloccante: un allegato mancante fa solo ricadere l'altra app sull'OCR,
+        // come già faceva prima di questa funzionalità.
+        console.warn('Allegato dati griglia non riuscito:', e);
       }
     }
 
