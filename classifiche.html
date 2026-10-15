@@ -219,6 +219,15 @@
         <img id="brandLogoPreview" class="logo-preview">
       </div>
       <div class="pdf-group">
+        <h4>Piè di pagina (organizzatore)</h4>
+        <label><input type="checkbox" id="footerOn" checked> Mostra su ogni pagina (classifica e intertempi)</label>
+        <label style="flex-direction:column;align-items:flex-start;gap:2px;"><span style="font-size:.78rem;color:var(--muted);">Organizzazione</span><input id="footerOrg" style="width:200px;"></label>
+        <label style="flex-direction:column;align-items:flex-start;gap:2px;"><span style="font-size:.78rem;color:var(--muted);">Telefono</span><input id="footerTel" style="width:200px;"></label>
+        <label style="flex-direction:column;align-items:flex-start;gap:2px;"><span style="font-size:.78rem;color:var(--muted);">E-mail</span><input id="footerEmail" style="width:200px;"></label>
+        <label style="flex-direction:column;align-items:flex-start;gap:2px;"><span style="font-size:.78rem;color:var(--muted);">Sito web</span><input id="footerWeb" style="width:200px;"></label>
+        <span style="font-size:.75rem;color:var(--muted);max-width:200px;">Salvato in questo browser. Un campo vuoto non viene stampato. La fascia toglie circa 14 pt in basso a ogni pagina.</span>
+      </div>
+      <div class="pdf-group">
         <h4>Logo cliente (scuola/azienda)</h4>
         <label><input type="file" id="logoInput" accept="image/png,image/jpeg" style="width:auto;"></label>
         <img id="logoPreview" class="logo-preview">
@@ -584,6 +593,43 @@ function drawSharedEventHeader(p) {
   return boxY - 14;
 }
 
+// Piè di pagina aziendale (discreto): sottile linea arancione + 2 righe di testo centrate, su OGNI pagina.
+// Identico per classifica e intertempi. Quando e' attivo le righe si fermano FOOTER_RESERVE pt più in alto.
+const FOOTER_RESERVE = 14;
+function footerSafe(font, str) {
+  // Helvetica standard accetta solo caratteri WinAnsi: tolgo quelli non codificabili invece di far fallire il PDF.
+  let out = '';
+  for (const ch of String(str || '')) { try { font.encodeText(ch); out += ch; } catch (e) { /* carattere non supportato: lo salto */ } }
+  return out.replace(/\s+/g, ' ').trim();
+}
+function footerLines(f, font) {
+  if (!f || !f.enabled) return [];
+  const org = footerSafe(font, f.org), tel = footerSafe(font, f.tel), email = footerSafe(font, f.email), web = footerSafe(font, f.web);
+  const parts = [];
+  if (tel) parts.push('Tel. ' + tel);
+  if (email) parts.push('E-mail: ' + email);
+  if (web) parts.push('Web: ' + web);
+  const lines = [];
+  if (org) lines.push({ text: 'Organizzazione: ' + org, bold: true, size: 8 });
+  if (parts.length) lines.push({ text: parts.join('   \u00B7   '), bold: false, size: 7.5 });
+  return lines;
+}
+function drawFooterOnAllPages(pdfDoc, rgb, fontBold, fontRegular, f, MARGIN, CONTENT_W) {
+  const lines = footerLines(f, fontRegular);
+  if (!lines.length) return;
+  const ORANGE = rgb(0.91, 0.51, 0.16), FOOT_TEXT = rgb(0.35, 0.35, 0.38);
+  pdfDoc.getPages().forEach(pg => {
+    pg.drawLine({ start: { x: MARGIN, y: 40 }, end: { x: MARGIN + CONTENT_W, y: 40 }, thickness: 1, color: ORANGE });
+    let y = lines.length === 2 ? 29 : 27;
+    lines.forEach(l => {
+      const font = l.bold ? fontBold : fontRegular;
+      const size = fitFontSize(l.text, font, l.size, 5.5, CONTENT_W);
+      pg.drawText(l.text, { x: centerText(l.text, font, size, MARGIN, CONTENT_W), y, size, font, color: FOOT_TEXT });
+      y -= 10;
+    });
+  });
+}
+
 // Genera il PDF della classifica, stile brandizzato OService. Usa il codice condiviso in
 // pdfgen_shared.js per palette, intestazione, formato data e restringimento font, cosi' resta
 // sempre identico al motore degli intertempi (niente più copie che si disallineano).
@@ -600,6 +646,7 @@ function buildClassificaPdf(PDFLib, eventData, options) {
     extraLogos: [], // loghi aggiuntivi (agenzia, sponsor...): array di {bytes, type}
     baseColorHex: '#1A3A6B',
     roundedCorners: false,
+    footer: null, // piè di pagina aziendale: { enabled, org, tel, email, web }
   }, options);
 
   const palette = computeSharedPalette(rgb, opts.baseColorHex);
@@ -626,6 +673,8 @@ function buildClassificaPdf(PDFLib, eventData, options) {
     const PAGE_W = 595.28, PAGE_H = 841.89;
     const MARGIN = 36;
     const CONTENT_W = PAGE_W - MARGIN * 2;
+    // Limite inferiore delle righe: con il piè di pagina attivo si alza di FOOTER_RESERVE pt per fargli posto.
+    const BOTTOM = MARGIN + (footerLines(opts.footer, fontRegular).length ? FOOTER_RESERVE : 0);
     const HEADER_H = 92;
     const CAT_BAR_H = 26;
     const TABLE_HEAD_H = 22;
@@ -793,7 +842,7 @@ function buildClassificaPdf(PDFLib, eventData, options) {
         const totalOk = blocks.reduce((s, b) => s + b.ok.length, 0);
         const fixed = blocks.reduce((s, b) => s + CAT_BAR_H + 12 + TABLE_HEAD_H + GAP
           + (b.others.length ? (22 + 8 + TABLE_HEAD_H + b.others.length * 13) : 0), 0);
-        const availRows = cursorY - MARGIN - fixed;
+        const availRows = cursorY - BOTTOM - fixed;
         if (totalOk > 0 && availRows / totalOk < rowH) {
           rowH = opts.allowMultiPage ? Math.max(availRows / totalOk, MIN_ROW_H_MULTI) : Math.max(availRows / totalOk, 4);
           fontSize = Math.max(opts.allowMultiPage ? MIN_FONT_MULTI : 4.5, Math.min(9.5, rowH - 5));
@@ -803,24 +852,24 @@ function buildClassificaPdf(PDFLib, eventData, options) {
       blocks.forEach((b, bi) => {
         const { cls, ok, others } = b;
         // se non c'è posto per barra categoria + intestazione tabella + almeno 2 righe, pagina nuova
-        if (bi > 0 && cursorY - (CAT_BAR_H + 12 + TABLE_HEAD_H + rowH * Math.min(2, Math.max(ok.length, 1))) < MARGIN) {
+        if (bi > 0 && cursorY - (CAT_BAR_H + 12 + TABLE_HEAD_H + rowH * Math.min(2, Math.max(ok.length, 1))) < BOTTOM) {
           newPage(); drawEventHeader();
         }
         drawCategoryBar(cls.name, false);
         drawTableHeaderBand(mainCols);
         ok.forEach((r, i) => {
-          if (cursorY - rowH < MARGIN) { newCompactPage(cls.name); drawTableHeaderBand(mainCols); }
+          if (cursorY - rowH < BOTTOM) { newCompactPage(cls.name); drawTableHeaderBand(mainCols); }
           drawDataRow(mainCols, rowValues(r, false), fontSize, rowH, i % 2 === 1, badgeForPosition(r.computedPosition));
         });
         if (others.length) {
           cursorY -= 22;
-          if (cursorY - (8 + TABLE_HEAD_H + 13) < MARGIN) { newCompactPage(cls.name); }
+          if (cursorY - (8 + TABLE_HEAD_H + 13) < BOTTOM) { newCompactPage(cls.name); }
           page.drawText('Fuori classifica', { x: MARGIN, y: cursorY, size: 10, font: fontBold, color: ACCENT_ON_WHITE });
           cursorY -= 8;
           drawTableHeaderBand(othersCols);
           const oh = Math.min(13, rowH);
           others.forEach((r, i) => {
-            if (cursorY - oh < MARGIN) { newCompactPage(cls.name); drawTableHeaderBand(othersCols); }
+            if (cursorY - oh < BOTTOM) { newCompactPage(cls.name); drawTableHeaderBand(othersCols); }
             drawDataRow(othersCols, rowValues(r, true), Math.min(8.5, fontSize), oh, i % 2 === 1, null);
           });
         }
@@ -838,7 +887,7 @@ function buildClassificaPdf(PDFLib, eventData, options) {
       drawCategoryBar(cls.name, false);
 
       const othersBlockH = others.length ? (22 + 8 + TABLE_HEAD_H + others.length * 13) : 0;
-      const availableH = cursorY - MARGIN - TABLE_HEAD_H - othersBlockH;
+      const availableH = cursorY - BOTTOM - TABLE_HEAD_H - othersBlockH;
       const totalRows = ok.length;
       let fontSize = 9.5, rowH = 17;
       if (totalRows > 0) {
@@ -851,7 +900,7 @@ function buildClassificaPdf(PDFLib, eventData, options) {
 
       drawTableHeaderBand(mainCols);
       ok.forEach((r, i) => {
-        if (cursorY - rowH < MARGIN) {
+        if (cursorY - rowH < BOTTOM) {
           if (opts.allowMultiPage) {
             newPage();
             drawEventHeader();
@@ -867,14 +916,14 @@ function buildClassificaPdf(PDFLib, eventData, options) {
         // cosi' la scritta resta visivamente agganciata alla propria tabella, non a quella sopra.
         cursorY -= 22;
         const neededForOthersHeader = 8 + TABLE_HEAD_H + 13; // titolo + banda intestazione + almeno una riga
-        if (cursorY - neededForOthersHeader < MARGIN && opts.allowMultiPage) {
+        if (cursorY - neededForOthersHeader < BOTTOM && opts.allowMultiPage) {
           newPage(); drawEventHeader(); drawCategoryBar(cls.name, true);
         }
         page.drawText('Fuori classifica', { x: MARGIN, y: cursorY, size: 10, font: fontBold, color: ACCENT_ON_WHITE });
         cursorY -= 8;
         drawTableHeaderBand(othersCols);
         others.forEach((r, i) => {
-          if (cursorY - 13 < MARGIN && opts.allowMultiPage) { newPage(); drawEventHeader(); drawCategoryBar(cls.name, true); drawTableHeaderBand(othersCols); }
+          if (cursorY - 13 < BOTTOM && opts.allowMultiPage) { newPage(); drawEventHeader(); drawCategoryBar(cls.name, true); drawTableHeaderBand(othersCols); }
           drawDataRow(othersCols, rowValues(r, true), 8.5, 13, i % 2 === 1, null);
         });
       }
@@ -897,7 +946,7 @@ function buildClassificaPdf(PDFLib, eventData, options) {
         drawTableHeaderBand(cols);
         const rowH = 17;
         rows.forEach((g, i) => {
-          if (cursorY - rowH < MARGIN) { newPage(); drawEventHeader(); drawCategoryBar('Classifica per ' + label.toLowerCase(), true); drawTableHeaderBand(cols); }
+          if (cursorY - rowH < BOTTOM) { newPage(); drawEventHeader(); drawCategoryBar('Classifica per ' + label.toLowerCase(), true); drawTableHeaderBand(cols); }
           drawDataRow(cols, {
             pos: String(g.pos), org: g.org, n: String(g.n), sum: String(g.sum),
             avg: fmtAvg(g.avg), avgTime: fmtClock(g.avgTime),
@@ -905,10 +954,12 @@ function buildClassificaPdf(PDFLib, eventData, options) {
         });
         cursorY -= 10;
         const note = scoreMode ? 'Ordinata per media punti (punti netti di tutti gli atleti classificati ÷ numero di atleti).' : 'Ordinata per tempo medio degli atleti classificati.';
+        if (cursorY - 8 < BOTTOM) { newPage(); drawEventHeader(); drawCategoryBar('Classifica per ' + label.toLowerCase(), true); }
         page.drawText(note, { x: MARGIN, y: cursorY - 8, size: 7.5, font: fontRegular, color: MUTED });
       }
     }
 
+    drawFooterOnAllPages(pdfDoc, rgb, fontBold, fontRegular, opts.footer, MARGIN, CONTENT_W);
     return pdfDoc.save();
   })();
 }
@@ -927,6 +978,7 @@ function buildSplitsPdf(PDFLib, eventData, options) {
     clientLogoBytes: null, clientLogoType: null,
     extraLogos: [],
     roundedCorners: false,
+    footer: null, // piè di pagina aziendale: { enabled, org, tel, email, web }
   }, options);
 
   const palette = computeSharedPalette(rgb, opts.baseColorHex);
@@ -957,6 +1009,7 @@ function buildSplitsPdf(PDFLib, eventData, options) {
     const PAGE_W = 595.28, PAGE_H = 841.89;
     const MARGIN = 36;
     const CONTENT_W = PAGE_W - MARGIN * 2;
+    const BOTTOM = MARGIN + (footerLines(opts.footer, fontRegular).length ? FOOTER_RESERVE : 0);
     const HEADER_H = 92;
     const CAT_BAR_H = 26;
 
@@ -1067,7 +1120,7 @@ function buildSplitsPdf(PDFLib, eventData, options) {
 
       all.forEach(r => {
         const h = cardHeight(computeLegTimes(r).length);
-        if (cursorY - h < MARGIN) {
+        if (cursorY - h < BOTTOM) {
           newPage();
           drawEventHeader();
           drawCategoryBar(cls.name, true);
@@ -1076,6 +1129,7 @@ function buildSplitsPdf(PDFLib, eventData, options) {
       });
     }
 
+    drawFooterOnAllPages(pdfDoc, rgb, fontBold, fontRegular, opts.footer, MARGIN, CONTENT_W);
     return pdfDoc.save();
   })();
 }
@@ -1396,6 +1450,34 @@ document.getElementById('brandLogoInput').addEventListener('change', async (e) =
 });
 loadBrandLogo();
 
+// Piè di pagina aziendale: valori predefiniti O-Service, modificabili e salvati in localStorage come il logo.
+const FOOTER_KEY = 'classifiche_footer_v1';
+const DEFAULT_FOOTER = { enabled: true, org: 'O-Service s.r.l.', tel: '+39 333 8511065', email: 'info@oservice.it', web: 'www.oservice.it' };
+function readFooterFromUI() {
+  return {
+    enabled: document.getElementById('footerOn').checked,
+    org: document.getElementById('footerOrg').value,
+    tel: document.getElementById('footerTel').value,
+    email: document.getElementById('footerEmail').value,
+    web: document.getElementById('footerWeb').value,
+  };
+}
+function loadFooterToUI() {
+  let f = DEFAULT_FOOTER;
+  try { const raw = localStorage.getItem(FOOTER_KEY); if (raw) f = Object.assign({}, DEFAULT_FOOTER, JSON.parse(raw)); } catch (e) { /* salvataggio corrotto: uso i predefiniti */ }
+  document.getElementById('footerOn').checked = !!f.enabled;
+  document.getElementById('footerOrg').value = f.org || '';
+  document.getElementById('footerTel').value = f.tel || '';
+  document.getElementById('footerEmail').value = f.email || '';
+  document.getElementById('footerWeb').value = f.web || '';
+}
+['footerOn', 'footerOrg', 'footerTel', 'footerEmail', 'footerWeb'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    try { localStorage.setItem(FOOTER_KEY, JSON.stringify(readFooterFromUI())); } catch (e) { /* spazio pieno: non salvo */ }
+  });
+});
+loadFooterToUI();
+
 /* ============ ARCHIVIO PER CLIENTE (IndexedDB) ============ */
 // Offline al 100%: tutto vive nel browser di questo dispositivo. Non c'è un server che sincronizza
 // tra dispositivi diversi — per questo il backup/ripristino qui sotto non è un extra, è la sicurezza
@@ -1699,6 +1781,7 @@ document.getElementById('exportSplitsBtn').addEventListener('click', async () =>
       brandLogoBytes, brandLogoType,
       clientLogoBytes: currentLogoBytes, clientLogoType: currentLogoType,
       extraLogos: extraLogos.map(l => ({ bytes: l.bytes, type: l.type })),
+      footer: readFooterFromUI(),
     });
     downloadBytes(bytes, 'intertempi.pdf', 'application/pdf');
   } catch (err) {
@@ -1741,6 +1824,7 @@ document.getElementById('exportPdfBtn').addEventListener('click', async () => {
       brandLogoBytes, brandLogoType,
       clientLogoBytes: currentLogoBytes, clientLogoType: currentLogoType,
       extraLogos: extraLogos.map(l => ({ bytes: l.bytes, type: l.type })),
+      footer: readFooterFromUI(),
     };
     const bytes = await buildClassificaPdf(window.PDFLib, eventData, options);
     downloadBytes(bytes, 'classifica.pdf', 'application/pdf');
