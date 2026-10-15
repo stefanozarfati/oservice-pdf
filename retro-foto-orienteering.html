@@ -207,6 +207,12 @@ textarea{min-height:56px;resize:vertical;line-height:1.35}
       <button type="button" id="alignCenterBtn" class="fmtBtn">Centro</button>
       <button type="button" id="alignRightBtn" class="fmtBtn">Dx</button>
     </div>
+    <label>Interlinea testo in alto: <span id="lhHeaderReadout">1,30</span></label>
+    <input type="range" id="lhHeaderSlider" min="1" max="2.4" step="0.05" value="1.3" style="width:100%">
+    <label>Interlinea testo in basso: <span id="lhFooterReadout">1,30</span></label>
+    <input type="range" id="lhFooterSlider" min="1" max="2.4" step="0.05" value="1.3" style="width:100%">
+    <label>Spazio tra testo e foto: <span id="txtGapReadout">4 mm</span></label>
+    <input type="range" id="txtGapSlider" min="0" max="20" step="0.5" value="4" style="width:100%">
 
     <label>Testo in alto</label>
     <div id="htext" class="editable" contenteditable="true">PHOTO - ORIENTEERING<br>Abbina le fotografie ai punti di controllo e scrivi il numero accanto alla lettera corrispondente.<br>ATTENZIONE: alcune fotografie sono in più per rendere più difficile l'abbinamento.</div>
@@ -291,7 +297,10 @@ if(window.pdfjsLib){
 const FORMATS = { A5:[148,210], A4:[210,297], A3:[297,420], A2:[420,594] };
 const MARGIN_MM = 5;    // margine pagina
 const GAP_MM    = 3;    // spazio minimo tra celle
-const TXT_GAP_MM= 4;    // spazio tra testo e griglia
+const TXT_GAP_DEFAULT_MM = 4; // spazio predefinito tra testo e griglia
+let TXT_GAP_MM = TXT_GAP_DEFAULT_MM; // modificabile dal cursore "Spazio tra testo e foto" (salvato nel progetto)
+const LH_DEFAULT = 1.3; // interlinea predefinita dei testi
+let headerLH = LH_DEFAULT, footerLH = LH_DEFAULT; // modificabili dai cursori "Interlinea" (salvate nel progetto)
 const LABEL_FRAC = 0.22; // quota della cella riservata alla riga lettera/spazio vuoto
 const CELL_ASPECT = 1.15; // proporzione larghezza/altezza della cella (foto+etichetta), fissa come negli esempi
 
@@ -478,6 +487,17 @@ $('alignLeftBtn').addEventListener('click', ()=> setAlign('left'));
 $('alignCenterBtn').addEventListener('click', ()=> setAlign('center'));
 $('alignRightBtn').addEventListener('click', ()=> setAlign('right'));
 
+// Interlinea (alto/basso) e spazio tra testo e foto: valgono sia per l'anteprima sia per il PDF.
+function syncSpacingUI(){
+  $('lhHeaderSlider').value = headerLH; $('lhFooterSlider').value = footerLH; $('txtGapSlider').value = TXT_GAP_MM;
+  $('lhHeaderReadout').textContent = headerLH.toFixed(2).replace('.',',');
+  $('lhFooterReadout').textContent = footerLH.toFixed(2).replace('.',',');
+  $('txtGapReadout').textContent = String(TXT_GAP_MM).replace('.',',') + ' mm';
+}
+$('lhHeaderSlider').addEventListener('input', e=>{ headerLH = +e.target.value; syncSpacingUI(); recompute(); });
+$('lhFooterSlider').addEventListener('input', e=>{ footerLH = +e.target.value; syncSpacingUI(); recompute(); });
+$('txtGapSlider').addEventListener('input', e=>{ TXT_GAP_MM = +e.target.value; syncSpacingUI(); recompute(); });
+
 // ---- Salvataggio nel browser (IndexedDB): progetti e libreria loghi ----
 const DB_NAME = 'retrofoto_orienteering', DB_VERSION = 1;
 let dbPromise = null;
@@ -568,6 +588,7 @@ function serializeProject(){
     footerHTML: $('ftext').innerHTML,
     headerAlign: $('htext').style.textAlign || '',
     footerAlign: $('ftext').style.textAlign || '',
+    headerLH: headerLH, footerLH: footerLH, txtGapMm: TXT_GAP_MM,
     ncount: +$('ncount').value || 0,
     labelScheme: $('labelScheme').value,
     labelFont: $('labelFontSel').value,
@@ -587,6 +608,9 @@ function applyProjectData(data){
   $('ftext').innerHTML = data.footerHTML || '';
   $('htext').style.textAlign = data.headerAlign || '';
   $('ftext').style.textAlign = data.footerAlign || '';
+  headerLH = data.headerLH || LH_DEFAULT; footerLH = data.footerLH || LH_DEFAULT;
+  TXT_GAP_MM = (data.txtGapMm === undefined || data.txtGapMm === null) ? TXT_GAP_DEFAULT_MM : +data.txtGapMm;
+  syncSpacingUI();
   $('ncount').value = data.ncount || 0;
   $('labelScheme').value = data.labelScheme || 'letters';
   $('labelFontSel').value = data.labelFont || '';
@@ -884,6 +908,91 @@ function drawLines(page, lines, xLeft, yTop, align, maxWidthPt){
   });
 }
 
+// Legge dall'anteprima già disegnata dove il browser ha messo DAVVERO ogni parola (a capo, righe vuote,
+// interlinea, parti più piccole o più grandi) e la restituisce come righe per il PDF. Così il PDF
+// disegna le righe esattamente dove le vedi a schermo, senza ricalcolare a capo e altezze per conto suo.
+async function layoutFromPreview(container, doc, standardFonts, warnings){
+  const pageEl = $('page');
+  const pRect = pageEl.getBoundingClientRect();
+  const cRect = container.getBoundingClientRect();
+  const mmPerPx = 1/currentScale;
+  const ctx = document.createElement('canvas').getContext('2d');
+  const segs = [];
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let node;
+  while((node = walker.nextNode())){
+    const txt = node.textContent;
+    if(!txt.length) continue;
+    const cs = getComputedStyle(node.parentElement);
+    const run = { color:cs.color, family:cs.fontFamily,
+      bold: parseInt(cs.fontWeight,10)>=700 || cs.fontWeight==='bold',
+      italic: cs.fontStyle==='italic',
+      underline: (cs.textDecorationLine||cs.textDecoration||'').includes('underline'),
+      sizePx: parseFloat(cs.fontSize) };
+    ctx.font = (run.italic?'italic ':'') + (run.bold?'bold ':'') + run.sizePx + 'px ' + run.family;
+    const asc = ctx.measureText('Hg').fontBoundingBoxAscent;
+    const ascent = (typeof asc==='number' && asc>0) ? asc : run.sizePx*0.8;
+    const re = /\s+|\S+/g; let m;
+    while((m = re.exec(txt))){
+      const rg = document.createRange();
+      rg.setStart(node, m.index); rg.setEnd(node, m.index + m[0].length);
+      const rects = rg.getClientRects();
+      if(!rects.length) continue;
+      segs.push({ text:m[0], isSpace:/^\s/.test(m[0]), run, baseline: rects[0].top + ascent });
+    }
+  }
+  // raggruppo per riga: stessa linea di base = stessa riga
+  const lines = [];
+  for(const sg of segs){
+    let L = lines.find(l=> Math.abs(l.baseline - sg.baseline) < 2);
+    if(!L){ L = {baseline:sg.baseline, segs:[]}; lines.push(L); }
+    L.segs.push(sg);
+  }
+  lines.sort((a,b)=> a.baseline - b.baseline);
+  const out = [];
+  for(const L of lines){
+    while(L.segs.length && L.segs[L.segs.length-1].isSpace) L.segs.pop(); // spazi a fine riga: non contano
+    if(!L.segs.length) continue;
+    const items = [];
+    for(const sg of L.segs){
+      const last = items[items.length-1];
+      if(last && last.run===sg.run){ last.text += sg.text; }
+      else items.push({text:sg.text, run:sg.run});
+    }
+    for(const it of items){
+      it.size = it.run.sizePx * mmPerPx * MM_PT;
+      it.font = await getPdfFontForRun(doc, standardFonts, it.run, warnings);
+      it.color = parseCssColor(it.run.color);
+      it.underline = it.run.underline;
+      it.width = it.font.widthOfTextAtSize(it.text, it.size);
+    }
+    out.push({ items, yFromTopPt: (L.baseline - pRect.top) * mmPerPx * MM_PT });
+  }
+  return { lines: out,
+           xLeftPt: (cRect.left - pRect.left) * mmPerPx * MM_PT,
+           widthPt: cRect.width * mmPerPx * MM_PT };
+}
+// Disegna le righe lette dall'anteprima, allineate come scelto
+function drawPreviewLines(pdfPage, layout, PH, align){
+  layout.lines.forEach(line=>{
+    const totalW = line.items.reduce((sum,it)=>sum+it.width,0);
+    let x = layout.xLeftPt;
+    if(align==='center') x += (layout.widthPt-totalW)/2;
+    if(align==='right')  x += (layout.widthPt-totalW);
+    const y = PH - line.yFromTopPt;
+    line.items.forEach(it=>{
+      if(it.text.trim()){
+        pdfPage.drawText(it.text, {x, y, size:it.size, font:it.font, color:it.color});
+        if(it.underline){
+          pdfPage.drawLine({start:{x,y:y-1}, end:{x:x+it.width,y:y-1},
+            thickness:Math.max(0.5,it.size*0.05), color:it.color});
+        }
+      }
+      x += it.width;
+    });
+  });
+}
+
 async function exportPDF(){
   if(!window.PDFLib){ alert('La libreria per creare il PDF non si è caricata. Controlla la connessione e riprova.'); return; }
   const btn = $('exportPdfBtn'), oldTxt = btn.textContent;
@@ -911,17 +1020,20 @@ async function exportPDF(){
     const marginPt = MARGIN_MM*MM_PT;
     const maxWidthPt = (w - 2*MARGIN_MM)*MM_PT;
 
-    const headerLines = htextEl.textContent.trim() ? await layoutRuns(extractRuns(headerText), maxWidthPt, doc, fonts, warnings) : [];
-    const footerLines = ftextEl.textContent.trim() ? await layoutRuns(extractRuns(footerText), maxWidthPt, doc, fonts, warnings) : [];
-    const headerHpt = linesHeightPt(headerLines);
-    const footerHpt = linesHeightPt(footerLines);
+    recompute(); // anteprima aggiornata: da lì si leggono posizioni e altezze dei testi
+    const hasHeader = !!htextEl.textContent.trim(), hasFooter = !!ftextEl.textContent.trim();
+    const headerLay = hasHeader ? await layoutFromPreview(headerText, doc, fonts, warnings) : {lines:[]};
+    const footerLay = hasFooter ? await layoutFromPreview(footerText, doc, fonts, warnings) : {lines:[]};
+    // altezze dei blocchi di testo = quelle dell'anteprima (in punti), così la griglia sotto coincide
+    const headerHpt = hasHeader ? headerText.offsetHeight / currentScale * MM_PT : 0;
+    const footerHpt = hasFooter ? footerText.offsetHeight / currentScale * MM_PT : 0;
 
-    drawLines(page, headerLines, marginPt, PH-marginPt, getComputedStyle(headerText).textAlign, maxWidthPt);
-    drawLines(page, footerLines, marginPt, marginPt+footerHpt, getComputedStyle(footerText).textAlign, maxWidthPt);
+    drawPreviewLines(page, headerLay, PH, getComputedStyle(headerText).textAlign);
+    drawPreviewLines(page, footerLay, PH, getComputedStyle(footerText).textAlign);
 
     const availWmm = w - 2*MARGIN_MM;
     const availHmm = h - 2*MARGIN_MM - (headerHpt/MM_PT) - (footerHpt/MM_PT)
-                      - (headerLines.length?TXT_GAP_MM:0) - (footerLines.length?TXT_GAP_MM:0);
+                      - (hasHeader?TXT_GAP_MM:0) - (hasFooter?TXT_GAP_MM:0);
     const nFoto = Math.max(0, +$('ncount').value||0);
     const N = Math.max(1, nFoto);
     const g = bestGrid(N, availWmm, availHmm, CELL_ASPECT, GAP_MM);
@@ -931,7 +1043,7 @@ async function exportPDF(){
       const vLeftMm = Math.max(0, availHmm - g.rows*g.cellH);
       const hGapMm = g.cols>1 ? hLeftMm/(g.cols-1) : 0;
       const vGapMm = g.rows>1 ? vLeftMm/(g.rows-1) : 0;
-      const gridTopMm = MARGIN_MM + (headerHpt/MM_PT) + (headerLines.length?TXT_GAP_MM:0);
+      const gridTopMm = MARGIN_MM + (headerHpt/MM_PT) + (hasHeader?TXT_GAP_MM:0);
       const labelHmm = g.cellH*LABEL_FRAC, photoHmm = g.cellH - labelHmm;
       const labelFontValue = $('labelFontSel').value;
       const lf = labelFontValue
@@ -1059,8 +1171,8 @@ function recompute(){
   headerText.style.top = marginPx + 'px';
   headerText.style.left = marginPx + 'px';
   headerText.style.width = (w - 2*MARGIN_MM)*scale + 'px';
-  headerText.style.fontSize = Math.max(9, 4.2*scale) + 'px';
-  headerText.style.lineHeight = 1.3;
+  headerText.style.fontSize = Math.max(5, 4.2*scale) + 'px';
+  headerText.style.lineHeight = headerLH;
   headerText.innerHTML = $('htext').innerHTML;
   headerText.style.textAlign = getComputedStyle(htextEl).textAlign;
   const headerHpx = ht ? headerText.offsetHeight : 0;
@@ -1070,8 +1182,8 @@ function recompute(){
   footerText.style.bottom = marginPx + 'px';
   footerText.style.left = marginPx + 'px';
   footerText.style.width = (w - 2*MARGIN_MM)*scale + 'px';
-  footerText.style.fontSize = Math.max(9, 4.2*scale) + 'px';
-  footerText.style.lineHeight = 1.3;
+  footerText.style.fontSize = Math.max(5, 4.2*scale) + 'px';
+  footerText.style.lineHeight = footerLH;
   footerText.innerHTML = $('ftext').innerHTML;
   footerText.style.textAlign = getComputedStyle(ftextEl).textAlign;
   const footerHpx = ft ? footerText.offsetHeight : 0;
