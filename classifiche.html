@@ -629,6 +629,10 @@ function buildClassificaPdf(PDFLib, eventData, options) {
     const HEADER_H = 92;
     const CAT_BAR_H = 26;
     const TABLE_HEAD_H = 22;
+    // Con "continua su più pagine" attivo il testo delle righe non scende mai sotto 9,5 pt (la misura normale):
+    // si stringe solo lo spazio tra le righe (min 14,5 pt), poi si cambia pagina. Con l'opzione spenta, per stare
+    // su una pagina sola, il testo può invece rimpicciolirsi.
+    const MIN_FONT_MULTI = 9.5, MIN_ROW_H_MULTI = 14.5;
 
     function nameOf(r) {
       return opts.nameOrder === 'nome-cognome' ? `${r.given} ${r.family}` : `${r.family} ${r.given}`;
@@ -791,8 +795,8 @@ function buildClassificaPdf(PDFLib, eventData, options) {
           + (b.others.length ? (22 + 8 + TABLE_HEAD_H + b.others.length * 13) : 0), 0);
         const availRows = cursorY - MARGIN - fixed;
         if (totalOk > 0 && availRows / totalOk < rowH) {
-          rowH = opts.allowMultiPage ? Math.max(availRows / totalOk, 9) : Math.max(availRows / totalOk, 4);
-          fontSize = Math.max(opts.allowMultiPage ? 6.5 : 4.5, Math.min(9.5, rowH - 5));
+          rowH = opts.allowMultiPage ? Math.max(availRows / totalOk, MIN_ROW_H_MULTI) : Math.max(availRows / totalOk, 4);
+          fontSize = Math.max(opts.allowMultiPage ? MIN_FONT_MULTI : 4.5, Math.min(9.5, rowH - 5));
         }
       }
       const newCompactPage = (name) => { newPage(); drawEventHeader(); drawCategoryBar(name, true); };
@@ -840,8 +844,8 @@ function buildClassificaPdf(PDFLib, eventData, options) {
       if (totalRows > 0) {
         const idealRowH = availableH / totalRows;
         if (idealRowH < rowH) {
-          rowH = opts.allowMultiPage ? Math.max(idealRowH, 9) : Math.max(idealRowH, 4);
-          fontSize = Math.max(opts.allowMultiPage ? 6.5 : 4.5, Math.min(9.5, rowH - 5));
+          rowH = opts.allowMultiPage ? Math.max(idealRowH, MIN_ROW_H_MULTI) : Math.max(idealRowH, 4);
+          fontSize = Math.max(opts.allowMultiPage ? MIN_FONT_MULTI : 4.5, Math.min(9.5, rowH - 5));
         }
       }
 
