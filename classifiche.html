@@ -279,6 +279,7 @@ function parseIofXml(xmlText, invert){
   if (!classResults.length) throw new Error('Nessuna categoria (ClassResult) trovata nel file.');
 
   const warnings = [];
+  let orgFromIdCount = 0;
   const classes = classResults.map(cr => {
     const classEl = nsChild(cr,'Class');
     const className = classEl ? txt(classEl,'Name','Categoria senza nome') : 'Categoria senza nome';
@@ -289,7 +290,11 @@ function parseIofXml(xmlText, invert){
       let given = nameEl ? txt(nameEl,'Given','') : '';
       if (invert) { const tmp = family; family = given; given = tmp; }
       const orgEl = nsChild(pr,'Organisation');
-      const org = orgEl ? txt(orgEl,'Name','') : '';
+      let org = orgEl ? txt(orgEl,'Name','') : '';
+      // SI-Droid scuole: la classe (es. "3^F") sta in Person/Id e Organisation e' vuota. Se la societa' manca uso l'ID come
+      // classe, ma solo se non e' un numero puro (un numero e' un pettorale/codice, non una classe). Resta modificabile in tabella.
+      const personId = personEl ? txt(personEl,'Id','') : '';
+      if (!org && personId && !/^\d+$/.test(personId)) { org = personId; orgFromIdCount++; }
       const resultEl = nsChild(pr,'Result');
       let timeSec = null, status = 'ALTRO', rawStatus = '', splits = [], controlCard = '';
       let score = null, penalty = 0;
@@ -319,6 +324,8 @@ function parseIofXml(xmlText, invert){
     });
     return { name: className, results };
   });
+
+  if (orgFromIdCount > 0) warnings.push(`Società/Classe vuota nel file: per ${orgFromIdCount} atleti ho usato l'ID di SI-Droid come classe (es. "3^F"). Puoi correggerla a mano nella colonna Società/Classe.`);
 
   // Riconoscimento automatico del tipo gara: se nel file ci sono punteggi (Score) e' una gara a punteggio.
   // Resta modificabile a mano dal menu "Tipo gara" (se un export a percorso obbligato contenesse Score).
