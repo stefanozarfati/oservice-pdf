@@ -133,6 +133,10 @@
   <div class="row" style="margin-top:10px;" id="eventRow" hidden>
     <input id="eventInfo" value="">
     <input id="eventDate" value="" placeholder="GG-MM-AAAA">
+    <select id="raceType" title="Tipo gara">
+      <option value="course">Tipo gara: percorso obbligato (vince il tempo)</option>
+      <option value="score">Tipo gara: score / punteggio (vincono i punti)</option>
+    </select>
   </div>
   <div class="sub" id="eventInfoHint" hidden>Suggerimento: usa il simbolo | nel nome per andare a capo nel PDF (es. "Virgilio|Seconde")</div>
   <div id="warningsBox"></div>
@@ -288,7 +292,15 @@ function parseIofXml(xmlText, invert){
       const org = orgEl ? txt(orgEl,'Name','') : '';
       const resultEl = nsChild(pr,'Result');
       let timeSec = null, status = 'ALTRO', rawStatus = '', splits = [], controlCard = '';
+      let score = null, penalty = 0;
       if (resultEl){
+        // Gare a punteggio (Score): SI-Droid esporta <Score type="Score"> (lanterne valide) e <Score type="Penalty"> (punti tolti per il ritardo)
+        nsChildren(resultEl,'Score').forEach(se => {
+          const v = parseFloat(se.textContent.trim());
+          if (isNaN(v)) return;
+          const t = se.getAttribute('type');
+          if (t === 'Score') score = v; else if (t === 'Penalty') penalty = v;
+        });
         const timeTxt = txt(resultEl,'Time','');
         timeSec = timeTxt ? parseFloat(timeTxt) : null;
         rawStatus = txt(resultEl,'Status','OK');
@@ -303,26 +315,37 @@ function parseIofXml(xmlText, invert){
       } else {
         warnings.push(`Nessun risultato per ${given} ${family}.`);
       }
-      return { id: uid(), family, given, org, timeSec: (status==='OK') ? timeSec : null, status, rawStatus, manualPosition: null, computedPosition: null, timeBehindSec: 0, splits, controlCard };
+      return { id: uid(), family, given, org, timeSec: (status==='OK') ? timeSec : null, status, rawStatus, score, penalty, manualPosition: null, computedPosition: null, timeBehindSec: 0, splits, controlCard };
     });
     return { name: className, results };
   });
 
-  return { eventName, eventDate, classes, warnings };
+  // Riconoscimento automatico del tipo gara: se nel file ci sono punteggi (Score) e' una gara a punteggio.
+  // Resta modificabile a mano dal menu "Tipo gara" (se un export a percorso obbligato contenesse Score).
+  const raceType = classes.some(c => c.results.some(r => r.score !== null)) ? 'score' : 'course';
+  if (raceType === 'score') warnings.push('Rilevata gara a punteggio (Score): classifica per punti netti (lanterne − penalità) decrescenti, a parità il tempo minore. Puoi cambiare il tipo gara dal menu accanto alla data.');
+
+  return { eventName, eventDate, classes, warnings, raceType };
 }
 
-function recomputeClass(cls){
+// Punti netti di una gara a punteggio (lanterne valide − penalità). Dati vecchi senza punteggio = 0.
+function netScore(r){ return (r.score ?? 0) - (r.penalty ?? 0); }
+
+function recomputeClass(cls, scoreMode){
   const ok = cls.results.filter(r=>r.status==='OK');
   const others = cls.results.filter(r=>r.status!=='OK');
   const manual = ok.filter(r=>r.manualPosition!==null).sort((a,b)=>a.manualPosition-b.manualPosition);
-  const auto = ok.filter(r=>r.manualPosition===null).sort((a,b)=>(a.timeSec??Infinity)-(b.timeSec??Infinity));
+  // Percorso obbligato: vince il tempo minore. Score: vince chi ha piu' punti netti, a parita' il tempo minore.
+  const byTime = (a,b)=>(a.timeSec??Infinity)-(b.timeSec??Infinity);
+  const auto = ok.filter(r=>r.manualPosition===null).sort(scoreMode ? (a,b)=>(netScore(b)-netScore(a)) || byTime(a,b) : byTime);
   const total = manual.length + auto.length;
   const finalOrder = new Array(total).fill(null);
   manual.forEach(r=>{ const idx = Math.min(Math.max(r.manualPosition-1,0), total-1); finalOrder[idx]=r; });
   let ai=0;
   for(let i=0;i<total;i++){ if(finalOrder[i]===null) finalOrder[i]=auto[ai++]; }
   const leaderTime = finalOrder.length ? finalOrder[0].timeSec : null;
-  finalOrder.forEach((r,i)=>{ r.computedPosition=i+1; r.timeBehindSec=(leaderTime!==null && r.timeSec!==null)?(r.timeSec-leaderTime):0; });
+  // In score il distacco dal tempo del primo non ha significato (e puo' risultare negativo): resta 0 e non viene mostrato.
+  finalOrder.forEach((r,i)=>{ r.computedPosition=i+1; r.timeBehindSec=(!scoreMode && leaderTime!==null && r.timeSec!==null)?(r.timeSec-leaderTime):0; });
   cls.results = [...finalOrder, ...others];
 }
 
@@ -570,18 +593,33 @@ function buildClassificaPdf(PDFLib, eventData, options) {
     }
     const STATUS_LABELS = { OK: 'OK', MP: 'Punzonatura Errata', PM: 'Punzonatura Mancante', DSQ: 'Squalificato', DNS: 'Non partito', DNF: 'Non arrivato', RIT_M: 'Ritirato', RIT_F: 'Ritirata', FC: 'Fuori classifica', ALTRO: 'Da verificare' };
 
+    // Gara a punteggio: colonne Punti (netto) sempre; Lanterne e Penalità solo se nell'evento c'e' almeno una penalità
+    // (altrimenti netto = lanterne e sarebbero colonne uguali). Il Distacco non ha senso e non viene stampato.
+    const scoreMode = eventData.raceType === 'score';
+    const hasPenalty = scoreMode && eventData.classes.some(c => c.results.some(r => (r.penalty ?? 0) > 0));
     function activeColumns(includeStato) {
       const defs = [];
       if (opts.columns.pos) defs.push({ key: 'pos', label: 'Pos.', w: 36, align: 'center' });
       if (opts.columns.nome) defs.push({ key: 'nome', label: 'Nome', w: 190, align: 'left' });
       if (opts.columns.societa) defs.push({ key: 'societa', label: opts.columns.societaLabel || 'Società/Classe', w: 110, align: 'left' });
+      if (scoreMode && hasPenalty) defs.push({ key: 'lanterne', label: 'Lanterne', w: 56, align: 'right' });
+      if (scoreMode && hasPenalty) defs.push({ key: 'penalita', label: 'Penalità', w: 56, align: 'right' });
+      if (scoreMode) defs.push({ key: 'punti', label: 'Punti', w: 46, align: 'right' });
       if (opts.columns.tempo) defs.push({ key: 'tempo', label: 'Tempo', w: 60, align: 'right' });
-      if (opts.columns.distacco) defs.push({ key: 'distacco', label: 'Distacco', w: 60, align: 'right' });
+      if (opts.columns.distacco && !scoreMode) defs.push({ key: 'distacco', label: 'Distacco', w: 60, align: 'right' });
       if (includeStato) defs.push({ key: 'stato', label: 'Stato', w: 90, align: 'left' });
       const used = defs.reduce((s, d) => s + d.w, 0);
       const extra = CONTENT_W - used;
       const nomeDef = defs.find(d => d.key === 'nome');
       if (nomeDef && extra > 0) nomeDef.w += extra;
+      if (extra < 0) {
+        // Troppe colonne (es. score con penalità): restringo prima Società/Classe, poi Nome, per non uscire dalla pagina
+        let deficit = -extra;
+        for (const [key, min] of [['societa', 60], ['nome', 130]]) {
+          const d = defs.find(x => x.key === key);
+          if (d && deficit > 0) { const cut = Math.min(deficit, d.w - min); if (cut > 0) { d.w -= cut; deficit -= cut; } }
+        }
+      }
       return defs;
     }
 
@@ -635,6 +673,9 @@ function buildClassificaPdf(PDFLib, eventData, options) {
         pos: r.computedPosition ? String(r.computedPosition) : '',
         nome: nameOf(r),
         societa: r.org || '',
+        lanterne: String(r.score ?? 0),
+        penalita: (r.penalty ?? 0) > 0 ? '-' + (r.penalty ?? 0) : '0',
+        punti: String((r.score ?? 0) - (r.penalty ?? 0)),
         tempo: secondsToClock(r.timeSec),
         distacco: r.computedPosition === 1 ? '' : secondsToClock(r.timeBehindSec),
         stato: includeStato ? (STATUS_LABELS[r.status] || r.status) : '',
@@ -679,7 +720,7 @@ function buildClassificaPdf(PDFLib, eventData, options) {
       const ok = cls.results.filter(r => r.status === 'OK');
       const others = cls.results.filter(r => r.status !== 'OK');
       const mainCols = activeColumns(false);
-      const othersCols = activeColumns(true).filter(c => c.key !== 'pos' && c.key !== 'tempo' && c.key !== 'distacco');
+      const othersCols = activeColumns(true).filter(c => !['pos', 'tempo', 'distacco', 'lanterne', 'penalita', 'punti'].includes(c.key));
 
       newPage();
       drawEventHeader();
@@ -918,6 +959,7 @@ function render(){
   document.getElementById('eventRow').hidden = false;
   document.getElementById('eventInfo').value = eventData.eventName;
   document.getElementById('eventDate').value = eventData.eventDate ? formatDateIt(eventData.eventDate) : '';
+  document.getElementById('raceType').value = eventData.raceType === 'score' ? 'score' : 'course';
   document.getElementById('eventInfoHint').hidden = false;
   const archSaveBtn = document.getElementById('saveToArchiveBtn');
   if (archSaveBtn) archSaveBtn.hidden = !currentClientId;
@@ -946,23 +988,26 @@ function render(){
 
 function renderTables(){
   const cls = eventData.classes[activeClassIdx];
-  recomputeClass(cls);
+  const scoreMode = eventData.raceType === 'score';
+  recomputeClass(cls, scoreMode);
 
   const ok = cls.results.filter(r=>r.status==='OK');
   const others = cls.results.filter(r=>r.status!=='OK');
 
-  document.getElementById('mainTableWrap').innerHTML = buildMainTableHtml(ok);
+  document.getElementById('mainTableWrap').innerHTML = buildMainTableHtml(ok, scoreMode);
   document.getElementById('othersTableWrap').innerHTML = others.length ? buildOthersTableHtml(others) : '<div class="empty">Nessuno fuori classifica in questa categoria.</div>';
 
   attachHandlers(cls);
   saveToStorage();
 }
 
-function buildMainTableHtml(rows){
+function buildMainTableHtml(rows, scoreMode){
   if (!rows.length) return '<div class="empty">Nessun atleta classificato in questa categoria.</div>';
+  // In score: colonne Lanterne / Penalità / Punti (netto) al posto del Distacco
   let h = `<table><thead><tr>
     <th class="pos-col">Pos.</th><th>Cognome</th><th>Nome</th><th>Società/Classe</th>
-    <th class="time-col">Tempo</th><th class="behind-col">Distacco</th><th class="status-col">Stato</th><th class="actions-col">Azioni</th>
+    ${scoreMode ? '<th class="time-col" title="Lanterne valide">Lanterne</th><th class="time-col" title="Punti tolti per il ritardo">Penalità</th><th class="time-col" title="Lanterne − penalità">Punti</th>' : ''}
+    <th class="time-col">Tempo</th>${scoreMode ? '' : '<th class="behind-col">Distacco</th>'}<th class="status-col">Stato</th><th class="actions-col">Azioni</th>
   </tr></thead><tbody>`;
   rows.forEach(r => {
     h += `<tr class="status-${r.status}" data-id="${r.id}">
@@ -970,8 +1015,11 @@ function buildMainTableHtml(rows){
       <td data-label="Cognome"><input class="f-family" value="${escapeHtml(r.family)}"></td>
       <td data-label="Nome"><input class="f-given" value="${escapeHtml(r.given)}"></td>
       <td data-label="Società/Classe"><input class="f-org" value="${escapeHtml(r.org)}"></td>
+      ${scoreMode ? `<td class="time-col" data-label="Lanterne"><input type="number" min="0" step="1" class="f-score" value="${r.score ?? 0}"></td>
+      <td class="time-col" data-label="Penalità"><input type="number" min="0" step="1" class="f-pen" value="${r.penalty ?? 0}"></td>
+      <td class="time-col" data-label="Punti"><strong>${netScore(r)}</strong></td>` : ''}
       <td class="time-col" data-label="Tempo"><input class="f-time" value="${secondsToClock(r.timeSec)}" placeholder="mm:ss"></td>
-      <td class="behind-col" data-label="Distacco">${secondsToClock(r.timeBehindSec)}</td>
+      ${scoreMode ? '' : `<td class="behind-col" data-label="Distacco">${secondsToClock(r.timeBehindSec)}</td>`}
       <td class="status-col" data-label="Stato"><select class="f-status">${statusOptions(r.status)}</select></td>
       <td class="actions-col" data-label="Azioni"><button class="swap-btn" data-action="swap" title="Inverti Nome/Cognome">⇄</button></td>
     </tr>`;
@@ -1031,6 +1079,12 @@ function attachHandlers(cls){
     tr.querySelector('.f-given').onchange = e => { rec.given = e.target.value; saveToStorage(); };
     tr.querySelector('.f-org').onchange = e => { rec.org = e.target.value; saveToStorage(); };
 
+    // Lanterne e penalità (solo in score): numeri interi, rifanno la classifica
+    const scoreInput = tr.querySelector('.f-score');
+    if (scoreInput) scoreInput.onchange = () => { const v = parseInt(scoreInput.value, 10); rec.score = isNaN(v) ? 0 : Math.max(0, v); rerender(); };
+    const penInput = tr.querySelector('.f-pen');
+    if (penInput) penInput.onchange = () => { const v = parseInt(penInput.value, 10); rec.penalty = isNaN(v) ? 0 : Math.max(0, v); rerender(); };
+
     const timeInput = tr.querySelector('.f-time');
     if (timeInput) timeInput.onchange = () => {
       const sec = clockToSeconds(timeInput.value);
@@ -1057,6 +1111,12 @@ async function loadXmlText(text){
     alert('Errore leggendo il file: ' + err.message);
   }
 }
+
+document.getElementById('raceType').addEventListener('change', (e) => {
+  if (!eventData) return;
+  eventData.raceType = e.target.value === 'score' ? 'score' : 'course';
+  renderTables();
+});
 
 document.getElementById('fileInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -1453,7 +1513,7 @@ document.getElementById('exportSplitsBtn').addEventListener('click', async () =>
   const btn = document.getElementById('exportSplitsBtn');
   btn.disabled = true; btn.textContent = 'Genero il PDF…';
   try {
-    eventData.classes.forEach(recomputeClass);
+    eventData.classes.forEach(c => recomputeClass(c, eventData.raceType === 'score'));
     const totalSplits = eventData.classes.reduce((s, c) => s + c.results.reduce((s2, r) => s2 + ((r.splits || []).length), 0), 0);
     if (totalSplits === 0) {
       alert('Questo progetto non contiene dati di intertempi (probabilmente è stato caricato prima che il programma li leggesse dal file). Ricarica il file XML originale con il pulsante in alto per rigenerarli.');
@@ -1485,7 +1545,7 @@ document.getElementById('exportPdfBtn').addEventListener('click', async () => {
     // Fondamentale: ricalcola posizioni/distacchi di TUTTE le categorie, non solo quella
     // attualmente visibile a schermo — altrimenti le categorie mai aperte vengono esportate
     // con i valori grezzi (posizione vuota, distacco a 0).
-    eventData.classes.forEach(recomputeClass);
+    eventData.classes.forEach(c => recomputeClass(c, eventData.raceType === 'score'));
 
     const nameOrder = document.querySelector('input[name="nameOrder"]:checked').value;
     const presetVal = document.getElementById('societaLabelPreset').value;
