@@ -204,6 +204,8 @@
         <label style="margin-top:6px;"><input type="checkbox" id="compactToggle"> Più categorie sulla stessa pagina (compatta)</label>
         <label style="margin-top:6px;"><input type="checkbox" id="classRankToggle" checked> Aggiungi la classifica per classe (ultima pagina)</label>
         <label style="margin-top:6px;"><input type="checkbox" id="roundedCorners" checked> Angoli arrotondati (header, barre, tabella)</label>
+        <label style="margin-top:6px;">Testo minimo righe (pt) <input type="number" id="minFontInput" min="6" max="9.5" step="0.5" value="9.5" style="width:70px;"></label>
+        <label style="color:var(--muted);font-size:.78rem;">(9,5 = misura normale. Con "continua su più pagine" il testo non scende sotto questo valore, poi si cambia pagina: più basso = meno pagine, testo più piccolo)</label>
       </div>
       <div class="pdf-group">
         <h4>Colore classifica</h4>
@@ -681,7 +683,8 @@ function buildClassificaPdf(PDFLib, eventData, options) {
     // Con "continua su più pagine" attivo il testo delle righe non scende mai sotto 9,5 pt (la misura normale):
     // si stringe solo lo spazio tra le righe (min 14,5 pt), poi si cambia pagina. Con l'opzione spenta, per stare
     // su una pagina sola, il testo può invece rimpicciolirsi.
-    const MIN_FONT_MULTI = 9.5, MIN_ROW_H_MULTI = 14.5;
+    // Il minimo è modificabile (campo "Testo minimo righe", da 6 a 9,5 pt); l'altezza minima della riga segue: corpo + 5 pt.
+    const MIN_FONT_MULTI = Math.min(9.5, Math.max(6, +opts.minFont || 9.5)), MIN_ROW_H_MULTI = MIN_FONT_MULTI + 5;
 
     function nameOf(r) {
       return opts.nameOrder === 'nome-cognome' ? `${r.given} ${r.family}` : `${r.family} ${r.given}`;
@@ -940,8 +943,11 @@ function buildClassificaPdf(PDFLib, eventData, options) {
         const fixedW = fixed.reduce((s, f) => s + f[2], 0);
         cols.push({ key: 'org', label, w: CONTENT_W - 36 - fixedW, align: 'left' });
         fixed.forEach(f => cols.push({ key: f[0], label: f[1], w: f[2], align: 'right' }));
-        newPage();
-        drawEventHeader();
+        // Se l'ultima pagina delle categorie ha ancora posto per TUTTA la classifica per classe (barra, intestazione,
+        // righe e nota) la accodo lì, con un po' di spazio sopra; altrimenti pagina nuova con la sua intestazione.
+        const rankNeededH = 14 + CAT_BAR_H + 12 + TABLE_HEAD_H + rows.length * 17 + 18;
+        if (page && cursorY - rankNeededH >= BOTTOM) { cursorY -= 14; }
+        else { newPage(); drawEventHeader(); }
         drawCategoryBar('Classifica per ' + label.toLowerCase(), false);
         drawTableHeaderBand(cols);
         const rowH = 17;
@@ -1478,6 +1484,19 @@ function loadFooterToUI() {
 });
 loadFooterToUI();
 
+// Testo minimo delle righe (pt): salvato in questo browser; valori fuori da 6–9,5 vengono riportati nei limiti.
+const MINFONT_KEY = 'classifiche_minfont_v1';
+function readMinFont() {
+  const v = parseFloat(document.getElementById('minFontInput').value);
+  return isNaN(v) ? 9.5 : Math.min(9.5, Math.max(6, v));
+}
+try { const sv = parseFloat(localStorage.getItem(MINFONT_KEY)); if (!isNaN(sv)) document.getElementById('minFontInput').value = Math.min(9.5, Math.max(6, sv)); } catch (e) { /* uso il predefinito */ }
+document.getElementById('minFontInput').addEventListener('change', () => {
+  const v = readMinFont();
+  document.getElementById('minFontInput').value = v;
+  try { localStorage.setItem(MINFONT_KEY, String(v)); } catch (e) { /* spazio pieno: non salvo */ }
+});
+
 /* ============ ARCHIVIO PER CLIENTE (IndexedDB) ============ */
 // Offline al 100%: tutto vive nel browser di questo dispositivo. Non c'è un server che sincronizza
 // tra dispositivi diversi — per questo il backup/ripristino qui sotto non è un extra, è la sicurezza
@@ -1825,6 +1844,7 @@ document.getElementById('exportPdfBtn').addEventListener('click', async () => {
       clientLogoBytes: currentLogoBytes, clientLogoType: currentLogoType,
       extraLogos: extraLogos.map(l => ({ bytes: l.bytes, type: l.type })),
       footer: readFooterFromUI(),
+      minFont: readMinFont(),
     };
     const bytes = await buildClassificaPdf(window.PDFLib, eventData, options);
     downloadBytes(bytes, 'classifica.pdf', 'application/pdf');
