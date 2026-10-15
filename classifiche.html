@@ -172,6 +172,8 @@
     <div id="mainTableWrap"></div>
     <div class="section-title">Fuori classifica</div>
     <div id="othersTableWrap"></div>
+    <div class="section-title">Classifica per classe</div>
+    <div id="orgRankWrap"></div>
 
     <div class="pdf-panel">
       <div class="pdf-group">
@@ -199,6 +201,7 @@
         <h4>Impaginazione</h4>
         <label><input type="checkbox" id="allowMultiPage" checked> Se non entra, continua su più pagine</label>
         <label style="color:var(--muted);font-size:.78rem;">(se disattivato: il testo si rimpicciolisce quanto serve per stare comunque tutto su una pagina — nessun atleta viene mai tagliato)</label>
+        <label style="margin-top:6px;"><input type="checkbox" id="classRankToggle" checked> Aggiungi la classifica per classe (ultima pagina)</label>
         <label style="margin-top:6px;"><input type="checkbox" id="roundedCorners" checked> Angoli arrotondati (header, barre, tabella)</label>
       </div>
       <div class="pdf-group">
@@ -337,6 +340,45 @@ function parseIofXml(xmlText, invert){
 
 // Punti netti di una gara a punteggio (lanterne valide − penalità). Dati vecchi senza punteggio = 0.
 function netScore(r){ return (r.score ?? 0) - (r.penalty ?? 0); }
+
+// Classifica per classe/società: raggruppa gli atleti classificati (status OK) di tutte le categorie
+// per il valore della colonna Società/Classe. Gara a punteggio: ordine per MEDIA punti (poi somma, poi
+// tempo medio); gara a percorso: ordine per tempo medio. Si mostra anche il numero di atleti, perche'
+// una classe con più partecipanti avrebbe la somma più alta solo per questo motivo.
+function computeOrgStanding(ev){
+  const score = ev.raceType === 'score';
+  const map = new Map();
+  ev.classes.forEach(c => c.results.forEach(r => {
+    const org = (r.org || '').trim();
+    if (!org || r.status !== 'OK') return;
+    if (!map.has(org)) map.set(org, { org, n: 0, sum: 0, time: 0, nTime: 0 });
+    const g = map.get(org);
+    g.n++;
+    if (score) g.sum += netScore(r);
+    if (r.timeSec !== null && r.timeSec !== undefined && !isNaN(r.timeSec)) { g.time += r.timeSec; g.nTime++; }
+  }));
+  const rows = Array.from(map.values()).map(g => ({
+    org: g.org, n: g.n, sum: g.sum,
+    avg: g.n ? g.sum / g.n : 0,
+    avgTime: g.nTime ? g.time / g.nTime : null,
+  }));
+  const tcmp = (a, b) => (a.avgTime ?? Infinity) - (b.avgTime ?? Infinity);
+  rows.sort(score ? (a, b) => (b.avg - a.avg) || (b.sum - a.sum) || tcmp(a, b) : tcmp);
+  // posizione a pari merito: stessa media (e stesso tempo medio) = stesso posto
+  rows.forEach((g, i) => {
+    const p = rows[i - 1];
+    const same = p && (score ? (p.avg === g.avg && p.sum === g.sum && p.avgTime === g.avgTime) : p.avgTime === g.avgTime);
+    g.pos = same ? p.pos : i + 1;
+  });
+  return rows;
+}
+function fmtAvg(x){ return (Math.round(x * 100) / 100).toLocaleString('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
+function fmtClock(sec){
+  if (sec === null || sec === undefined || isNaN(sec)) return '';
+  sec = Math.round(sec);
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return (h > 0 ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(s).padStart(2, '0');
+}
 
 function recomputeClass(cls, scoreMode){
   const ok = cls.results.filter(r=>r.status==='OK');
@@ -776,6 +818,35 @@ function buildClassificaPdf(PDFLib, eventData, options) {
       }
     }
 
+    // Ultima pagina: classifica per classe/società (tutte le categorie insieme)
+    if (opts.classRank) {
+      const rows = computeOrgStanding(eventData);
+      if (rows.length >= 2) {
+        const label = opts.columns.societaLabel || 'Classe';
+        const fixed = scoreMode ? [['n', 'Atleti', 60], ['sum', 'Somma punti', 80], ['avg', 'Media punti', 80], ['avgTime', 'Tempo medio', 80]]
+                                : [['n', 'Atleti', 70], ['avgTime', 'Tempo medio', 90]];
+        const cols = [{ key: 'pos', label: 'Pos.', w: 36, align: 'center' }];
+        const fixedW = fixed.reduce((s, f) => s + f[2], 0);
+        cols.push({ key: 'org', label, w: CONTENT_W - 36 - fixedW, align: 'left' });
+        fixed.forEach(f => cols.push({ key: f[0], label: f[1], w: f[2], align: 'right' }));
+        newPage();
+        drawEventHeader();
+        drawCategoryBar('Classifica per ' + label.toLowerCase(), false);
+        drawTableHeaderBand(cols);
+        const rowH = 17;
+        rows.forEach((g, i) => {
+          if (cursorY - rowH < MARGIN) { newPage(); drawEventHeader(); drawCategoryBar('Classifica per ' + label.toLowerCase(), true); drawTableHeaderBand(cols); }
+          drawDataRow(cols, {
+            pos: String(g.pos), org: g.org, n: String(g.n), sum: String(g.sum),
+            avg: fmtAvg(g.avg), avgTime: fmtClock(g.avgTime),
+          }, 9.5, rowH, i % 2 === 1, badgeForPosition(g.pos));
+        });
+        cursorY -= 10;
+        const note = scoreMode ? 'Ordinata per media punti (punti netti di tutti gli atleti classificati ÷ numero di atleti).' : 'Ordinata per tempo medio degli atleti classificati.';
+        page.drawText(note, { x: MARGIN, y: cursorY - 8, size: 7.5, font: fontRegular, color: MUTED });
+      }
+    }
+
     return pdfDoc.save();
   })();
 }
@@ -899,7 +970,11 @@ function buildSplitsPdf(PDFLib, eventData, options) {
       drawSection(MARGIN, topY - h, CONTENT_W, h, WHITE, CARD_BORDER, 0.75);
 
       const posLabel = r.computedPosition ? `${r.computedPosition}.` : '—';
-      const rightLabel = r.status === 'OK' ? secondsToClock(r.timeSec) : (STATUS_LABELS[r.status] || r.status);
+      const scoreRace = eventData.raceType === 'score';
+      const ptsLabel = scoreRace ? `${netScore(r)} pt` : '';
+      const rightLabel = r.status === 'OK'
+        ? (scoreRace ? `${ptsLabel} — ${secondsToClock(r.timeSec)}` : secondsToClock(r.timeSec))
+        : (STATUS_LABELS[r.status] || r.status);
       const headerText = `${posLabel} ${nameOf(r)} — ${r.org || ''}`;
       page.drawText(headerText, { x: MARGIN + CARD_PAD, y: topY - CARD_PAD - 9, size: 9, font: fontBold, color: TEXT });
       const rw = fontBold.widthOfTextAtSize(rightLabel, 9);
@@ -993,6 +1068,24 @@ function render(){
   renderTables();
 }
 
+// Classifica per classe a schermo (tutte le categorie insieme). Ricalcola ogni categoria prima di sommare.
+function renderOrgRank(){
+  const wrap = document.getElementById('orgRankWrap');
+  if (!wrap || !eventData) return;
+  const score = eventData.raceType === 'score';
+  eventData.classes.forEach(c => recomputeClass(c, score));
+  const rows = computeOrgStanding(eventData);
+  if (rows.length === 0) { wrap.innerHTML = '<div class="empty">Nessuna classe/società compilata: la classifica per classe non è disponibile.</div>'; return; }
+  const head = score
+    ? '<th>Pos.</th><th>Classe</th><th>Atleti</th><th>Somma punti</th><th>Media punti</th><th>Tempo medio</th>'
+    : '<th>Pos.</th><th>Classe</th><th>Atleti</th><th>Tempo medio</th>';
+  const body = rows.map(g => score
+    ? `<tr><td>${g.pos}</td><td>${escapeHtml(g.org)}</td><td>${g.n}</td><td>${g.sum}</td><td><strong>${fmtAvg(g.avg)}</strong></td><td>${fmtClock(g.avgTime)}</td></tr>`
+    : `<tr><td>${g.pos}</td><td>${escapeHtml(g.org)}</td><td>${g.n}</td><td><strong>${fmtClock(g.avgTime)}</strong></td></tr>`).join('');
+  wrap.innerHTML = `<table id="orgRankTable"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
+    + `<div style="font-size:.78rem;color:var(--muted);margin-top:6px;">${score ? 'Ordinata per media punti (somma dei punti netti ÷ numero di atleti classificati). Contano solo gli atleti classificati di tutte le categorie.' : 'Ordinata per tempo medio degli atleti classificati di tutte le categorie.'}</div>`;
+}
+
 function renderTables(){
   const cls = eventData.classes[activeClassIdx];
   const scoreMode = eventData.raceType === 'score';
@@ -1003,6 +1096,7 @@ function renderTables(){
 
   document.getElementById('mainTableWrap').innerHTML = buildMainTableHtml(ok, scoreMode);
   document.getElementById('othersTableWrap').innerHTML = others.length ? buildOthersTableHtml(others) : '<div class="empty">Nessuno fuori classifica in questa categoria.</div>';
+  renderOrgRank();
 
   attachHandlers(cls);
   saveToStorage();
@@ -1084,7 +1178,7 @@ function attachHandlers(cls){
 
     tr.querySelector('.f-family').onchange = e => { rec.family = e.target.value; saveToStorage(); };
     tr.querySelector('.f-given').onchange = e => { rec.given = e.target.value; saveToStorage(); };
-    tr.querySelector('.f-org').onchange = e => { rec.org = e.target.value; saveToStorage(); };
+    tr.querySelector('.f-org').onchange = e => { rec.org = e.target.value; saveToStorage(); renderOrgRank(); };
 
     // Lanterne e penalità (solo in score): numeri interi, rifanno la classifica
     const scoreInput = tr.querySelector('.f-score');
@@ -1128,7 +1222,9 @@ document.getElementById('raceType').addEventListener('change', (e) => {
 document.getElementById('fileInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  loadXmlText(await file.text());
+  const text = await file.text();
+  e.target.value = ''; // permette di riscegliere lo stesso file (altrimenti il browser non lo ricarica)
+  loadXmlText(text);
 });
 
 document.getElementById('eventInfo').addEventListener('change', e => { if (eventData){ eventData.eventName = e.target.value; saveToStorage(); } });
@@ -1171,7 +1267,13 @@ dropzone.addEventListener('drop', async e => {
 });
 // Permette il drag&drop anche sopra il resto della pagina, non solo sul riquadro dedicato
 document.addEventListener('dragover', e => e.preventDefault());
-document.addEventListener('drop', e => { if (e.target !== dropzone) e.preventDefault(); });
+document.addEventListener('drop', async e => {
+  e.preventDefault();
+  const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.xml')) { alert('Trascina un file .xml (export IOF v3.0 di SI-Droid).'); return; }
+  loadXmlText(await file.text());
+});
 
 /* ============ LOGO ============ */
 let currentLogoBytes = null, currentLogoType = null;
@@ -1570,6 +1672,7 @@ document.getElementById('exportPdfBtn').addEventListener('click', async () => {
       },
       nameOrder,
       allowMultiPage: document.getElementById('allowMultiPage').checked,
+      classRank: document.getElementById('classRankToggle').checked,
       baseColorHex: document.getElementById('baseColorPicker').value,
       roundedCorners: document.getElementById('roundedCorners').checked,
       brandLogoBytes, brandLogoType,
