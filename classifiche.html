@@ -201,6 +201,7 @@
         <h4>Impaginazione</h4>
         <label><input type="checkbox" id="allowMultiPage" checked> Se non entra, continua su più pagine</label>
         <label style="color:var(--muted);font-size:.78rem;">(se disattivato: il testo si rimpicciolisce quanto serve per stare comunque tutto su una pagina — nessun atleta viene mai tagliato)</label>
+        <label style="margin-top:6px;"><input type="checkbox" id="compactToggle"> Più categorie sulla stessa pagina (compatta)</label>
         <label style="margin-top:6px;"><input type="checkbox" id="classRankToggle" checked> Aggiungi la classifica per classe (ultima pagina)</label>
         <label style="margin-top:6px;"><input type="checkbox" id="roundedCorners" checked> Angoli arrotondati (header, barre, tabella)</label>
       </div>
@@ -765,6 +766,63 @@ function buildClassificaPdf(PDFLib, eventData, options) {
       return null;
     }
 
+    // Modalità compatta: più categorie di seguito sulla stessa pagina (intestazione evento una sola volta per pagina).
+    // Con "continua su più pagine" attivo, quando lo spazio finisce si va a pagina nuova (anche a metà categoria,
+    // con la barra "(segue)"); con l'opzione spenta tutto viene rimpicciolito per stare su una pagina sola.
+    // In ogni caso nessun atleta viene mai tagliato fuori dalla pagina.
+    if (opts.compact) {
+      const mainCols = activeColumns(false);
+      const othersCols = activeColumns(true).filter(c => !['pos', 'tempo', 'distacco', 'lanterne', 'penalita', 'punti'].includes(c.key));
+      const GAP = 14;
+      const blocks = eventData.classes.map(cls => ({
+        cls,
+        ok: cls.results.filter(r => r.status === 'OK'),
+        others: cls.results.filter(r => r.status !== 'OK'),
+      }));
+      newPage();
+      drawEventHeader();
+      let rowH = 17, fontSize = 9.5;
+      {
+        // Stesso criterio della modalità normale: restringo le righe finché tutto sta su una pagina, ma senza
+        // scendere sotto un minimo leggibile (9 pt di riga) se "continua su più pagine" è attivo: oltre quel
+        // minimo si cambia pagina. Con l'opzione spenta si può scendere di più (min 4 pt) per restare su una pagina.
+        const totalOk = blocks.reduce((s, b) => s + b.ok.length, 0);
+        const fixed = blocks.reduce((s, b) => s + CAT_BAR_H + 12 + TABLE_HEAD_H + GAP
+          + (b.others.length ? (22 + 8 + TABLE_HEAD_H + b.others.length * 13) : 0), 0);
+        const availRows = cursorY - MARGIN - fixed;
+        if (totalOk > 0 && availRows / totalOk < rowH) {
+          rowH = opts.allowMultiPage ? Math.max(availRows / totalOk, 9) : Math.max(availRows / totalOk, 4);
+          fontSize = Math.max(opts.allowMultiPage ? 6.5 : 4.5, Math.min(9.5, rowH - 5));
+        }
+      }
+      const newCompactPage = (name) => { newPage(); drawEventHeader(); drawCategoryBar(name, true); };
+      blocks.forEach((b, bi) => {
+        const { cls, ok, others } = b;
+        // se non c'è posto per barra categoria + intestazione tabella + almeno 2 righe, pagina nuova
+        if (bi > 0 && cursorY - (CAT_BAR_H + 12 + TABLE_HEAD_H + rowH * Math.min(2, Math.max(ok.length, 1))) < MARGIN) {
+          newPage(); drawEventHeader();
+        }
+        drawCategoryBar(cls.name, false);
+        drawTableHeaderBand(mainCols);
+        ok.forEach((r, i) => {
+          if (cursorY - rowH < MARGIN) { newCompactPage(cls.name); drawTableHeaderBand(mainCols); }
+          drawDataRow(mainCols, rowValues(r, false), fontSize, rowH, i % 2 === 1, badgeForPosition(r.computedPosition));
+        });
+        if (others.length) {
+          cursorY -= 22;
+          if (cursorY - (8 + TABLE_HEAD_H + 13) < MARGIN) { newCompactPage(cls.name); }
+          page.drawText('Fuori classifica', { x: MARGIN, y: cursorY, size: 10, font: fontBold, color: ACCENT_ON_WHITE });
+          cursorY -= 8;
+          drawTableHeaderBand(othersCols);
+          const oh = Math.min(13, rowH);
+          others.forEach((r, i) => {
+            if (cursorY - oh < MARGIN) { newCompactPage(cls.name); drawTableHeaderBand(othersCols); }
+            drawDataRow(othersCols, rowValues(r, true), Math.min(8.5, fontSize), oh, i % 2 === 1, null);
+          });
+        }
+        cursorY -= GAP;
+      });
+    } else
     for (const cls of eventData.classes) {
       const ok = cls.results.filter(r => r.status === 'OK');
       const others = cls.results.filter(r => r.status !== 'OK');
@@ -1673,6 +1731,7 @@ document.getElementById('exportPdfBtn').addEventListener('click', async () => {
       nameOrder,
       allowMultiPage: document.getElementById('allowMultiPage').checked,
       classRank: document.getElementById('classRankToggle').checked,
+      compact: document.getElementById('compactToggle').checked,
       baseColorHex: document.getElementById('baseColorPicker').value,
       roundedCorners: document.getElementById('roundedCorners').checked,
       brandLogoBytes, brandLogoType,
