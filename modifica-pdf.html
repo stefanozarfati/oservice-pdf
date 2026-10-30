@@ -677,7 +677,33 @@ function nudge(dirX, dirY, shift, alt, coalesce = true) {     // dirX/dirY = dir
   // direzione schermo -> pagina: destra = (ax, ay), su = -(bx, by) in unità dispositivo
   const rx = A.ax, ry = A.ay, ux = -A.bx, uy = -A.by;
   const rl = Math.hypot(rx, ry) || 1, ul = Math.hypot(ux, uy) || 1;
-  moveSelection(dirX * k * rx / rl + dirY * k * ux / ul, dirX * k * ry / rl + dirY * k * uy / ul, coalesce);
+  const dxPt = dirX * k * rx / rl + dirY * k * ux / ul, dyPt = dirX * k * ry / rl + dirY * k * uy / ul;
+  if (coalesce) queueNudge(dxPt, dyPt); else moveSelection(dxPt, dyPt, false);
+}
+
+/* ---------- frecce: anteprima subito, calcolo vero differito ----------
+   Uno spostamento "vero" costringe a rigenerare la pagina, rileggerne gli oggetti
+   e ridisegnarla con PDFium: su una mappa sono centinaia di millisecondi. Con le
+   frecce accumuliamo lo spostamento e mostriamo subito il "fantasma" (lo stesso
+   del trascinamento); il lavoro pesante si fa una sola volta, appena l'utente
+   smette di premere (NUDGE_WAIT) o comunque ogni NUDGE_MAX se tiene premuto. */
+const NUDGE_WAIT = 160, NUDGE_MAX = 600;
+let nq = null;                                         // { dx, dy, t0, timer } in punti pagina
+function pageDelta2dev(ddx, ddy) { const A = S.view.A; return [(A.by * ddx - A.bx * ddy) / A.det, (-A.ay * ddx + A.ax * ddy) / A.det]; }
+function flushNudge() {
+  if (!nq) return;
+  const q = nq; nq = null; clearTimeout(q.timer);
+  try { moveSelection(q.dx, q.dy, true); } catch (err) { setStatus(err.message, 'err'); drawOverlay(); }
+}
+function queueNudge(dxPt, dyPt) {
+  if (!S.sel.length) return;
+  if (!nq) nq = { dx: 0, dy: 0, t0: Date.now(), timer: 0 };
+  nq.dx += dxPt; nq.dy += dyPt;
+  clearTimeout(nq.timer);
+  if (Date.now() - nq.t0 >= NUDGE_MAX) { flushNudge(); return; }
+  nq.timer = setTimeout(flushNudge, NUDGE_WAIT);
+  const [gx, gy] = pageDelta2dev(nq.dx, nq.dy);
+  drawOverlay(gx, gy);
 }
 
 /* ---------- selezione col mouse ---------- */
@@ -716,6 +742,7 @@ function selectAtPoint(px, py, additive) {
 }
 ov.addEventListener('pointerdown', (e) => {
   if (!S.page || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  flushNudge();
   const [dx, dy] = eventDev(e);
   if (S.pending) { const [qx, qy] = dev2page(dx, dy); e.preventDefault(); placePending(qx, qy); return; }
   const hnd = e.altKey ? null : handleAt(dx, dy);
@@ -781,6 +808,7 @@ document.addEventListener('keydown', (e) => {
   if (tag === 'input' || tag === 'textarea') return;
   const k = e.key;
   try {
+    if (!/^Arrow(Left|Right|Up|Down)$/.test(k)) flushNudge();
     if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
     if (k === 'Escape') { if (S.pending) { S.pending = null; ov.style.cursor = 'crosshair'; setStatus('Aggiunta annullata.'); return; } S.sel = []; drawOverlay(); return; }
     if (!S.sel.length) return;
@@ -794,6 +822,7 @@ document.addEventListener('keydown', (e) => {
 /* ---------- dimensioni numeriche ---------- */
 function applyDim(which) {
   if (!S.sel.length) return;
+  flushNudge();
   const u = selUnion(), w0 = (u.r - u.l) / MM, h0 = (u.t - u.b) / MM;
   const w = parseFloat($('dimW').value), h = parseFloat($('dimH').value);
   let sx = 1, sy = 1;
@@ -805,14 +834,14 @@ $('dimW').addEventListener('change', () => applyDim('w'));
 $('dimH').addEventListener('change', () => applyDim('h'));
 
 /* ---------- barra strumenti ---------- */
-$('btnDel').addEventListener('click', () => { try { deleteSelection(); } catch (err) { setStatus(err.message, 'err'); } });
-$('btnUndo').addEventListener('click', () => undo().catch((err) => setStatus(err.message, 'err')));
-$('pgPrev').addEventListener('click', () => openPage(S.pageIndex - 1, false));
-$('pgNext').addEventListener('click', () => openPage(S.pageIndex + 1, false));
-$('zIn').addEventListener('click', () => { S.zoom *= 1.25; renderView(); });
-$('zOut').addEventListener('click', () => { S.zoom = Math.max(0.15, S.zoom / 1.25); renderView(); });
-$('zFit').addEventListener('click', fitWidth);
-window.addEventListener('resize', () => { if (S.page) fitWidth(); });
+$('btnDel').addEventListener('click', () => { try { flushNudge(); deleteSelection(); } catch (err) { setStatus(err.message, 'err'); } });
+$('btnUndo').addEventListener('click', () => { flushNudge(); undo().catch((err) => setStatus(err.message, 'err')); });
+$('pgPrev').addEventListener('click', () => { flushNudge(); openPage(S.pageIndex - 1, false); });
+$('pgNext').addEventListener('click', () => { flushNudge(); openPage(S.pageIndex + 1, false); });
+$('zIn').addEventListener('click', () => { flushNudge(); S.zoom *= 1.25; renderView(); });
+$('zOut').addEventListener('click', () => { flushNudge(); S.zoom = Math.max(0.15, S.zoom / 1.25); renderView(); });
+$('zFit').addEventListener('click', () => { flushNudge(); fitWidth(); });
+window.addEventListener('resize', () => { if (S.page) { flushNudge(); fitWidth(); } });
 window.addEventListener('beforeunload', (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
 
 /* ---------- apertura file ---------- */
@@ -845,6 +874,7 @@ async function cleanPdf(bytes) {
 }
 $('btnSave').addEventListener('click', async () => {
   try {
+    flushNudge();
     setStatus('Preparo il file…');
     E.w.FPDFPage_GenerateContent(S.page);
     const clean = await cleanPdf(E.save(S.doc.doc));
@@ -882,7 +912,7 @@ function refreshPhotoInfo() {
   $('reduceNote').textContent = canReduce ? (photo.kind === 'png' ? 'Alleggerisce il file riducendo i pixel (resta PNG).' : 'Alleggerisce il file, ma ricomprime la foto (qualità 92%).') : 'Non serve: la foto è già a 300 dpi o meno.';
   $('photoOk').disabled = false;
 }
-$('btnPhoto').addEventListener('click', () => { photo = null; $('photoFile').value = ''; $('reduce300').checked = false; refreshPhotoInfo(); $('photoInfo').textContent = 'Scegli una foto (JPEG, PNG o HEIC).'; $('photoOk').disabled = true; dlg.showModal(); });
+$('btnPhoto').addEventListener('click', () => { flushNudge(); photo = null; $('photoFile').value = ''; $('reduce300').checked = false; refreshPhotoInfo(); $('photoInfo').textContent = 'Scegli una foto (JPEG, PNG o HEIC).'; $('photoOk').disabled = true; dlg.showModal(); });
 $('photoCancel').addEventListener('click', () => dlg.close());
 $('photoFile').addEventListener('change', async () => {
   const f = $('photoFile').files[0]; if (!f) return;
@@ -1046,7 +1076,7 @@ async function applyTextEdit(sp) {
     setStatus('Testo modificato. Ctrl+Z annulla.', 'ok');
   } catch (err) { await undo().catch(() => {}); setStatus('Modifica non riuscita: ' + (/encode|WinAnsi|glyph/i.test(err.message) ? 'il font scelto non contiene qualche carattere. Prova un altro font.' : err.message), 'err'); }
 }
-$('btnEditText').addEventListener('click', openTextEdit);
+$('btnEditText').addEventListener('click', () => { flushNudge(); openTextEdit(); });
 ov.addEventListener('dblclick', () => { if (S.sel.length && S.sel.every((o) => o.type === OBJ.TEXT)) openTextEdit(); });
 $('photoOk').addEventListener('click', async () => {
   try {
@@ -1074,7 +1104,7 @@ $('photoOk').addEventListener('click', async () => {
 
 window.__S = S; window.__test = { openTextEdit, applyTextEdit, placePending, placeText, drawTextOnPage, readImage, resizeSelection, handleAt, handlePos, hitAll, hitObject, readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
 </script>
-<script>window.VERSIONE="46";</script>
+<script>window.VERSIONE="47";</script>
 <script src="versione.js"></script>
 </body>
 </html>
