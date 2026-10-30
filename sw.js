@@ -1,9 +1,12 @@
-const CACHE='oservice-suite-v45';
+// La versione e' la stessa che si legge in Home ("Versione NN"): un numero
+// solo, usato per il nome della cache e per l'aggiornamento automatico.
+const VERSIONE='46';
+const CACHE='oservice-suite-v'+VERSIONE;
 const ASSETS=[
   './','./index.html','./attestati.html','./impaginatore.html','./comprimi.html','./classifiche.html','./retro-foto-orienteering.html','./modifica-pdf.html','./font.html','./manifest.json',
   './gs/gs.js',  // gs.wasm (~15MB) NON in precache: cache-first al primo uso
   './lib/pdfium/pdfium.js',  // pdfium.wasm (~4,6MB) NON in precache: cache-first al primo uso (come gs.wasm)
-  './lib/pdf-lib-bundle.js','./lib/fontkit.js','./lib/font-manager.js',
+  './versione.js','./lib/pdf-lib-bundle.js','./lib/fontkit.js','./lib/font-manager.js',
   './icon-192.png','./icon-512.png','./icon-512-maskable.png',
   './tesseract/tesseract.min.js','./tesseract/worker.min.js','./tesseract/ita.traineddata',
   './tesseract/core/tesseract-core-simd-lstm.wasm','./tesseract/core/tesseract-core-simd-lstm.wasm.js',
@@ -33,9 +36,13 @@ const ASSETS=[
 ];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
+self.addEventListener('message',e=>{ if(e.data==='aggiornati')self.skipWaiting(); });
+
 self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET')return;
   const url=new URL(e.request.url);
+  // Questi due non si mettono MAI in cache: sono quelli che segnalano le novita'.
+  if(url.pathname.indexOf('versione.json')>=0||url.pathname.indexOf('versione.js')>=0)return;
   const isHTML = e.request.mode==='navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/') || url.pathname==='';
   if(isHTML){
     // network-first: quando online prende sempre la versione aggiornata; offline ripiega sulla cache
