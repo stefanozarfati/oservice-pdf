@@ -215,7 +215,16 @@ function pulisciRitagliImpossibili(doc){
     for(const s of streams){
       if(!s.obj) continue;
       let testo;
-      try{ testo = new TextDecoder("latin1").decode(decodePDFRawStream(s.obj).decode()); }
+      // Conversione byte->carattere 1:1, fatta a mano. NON usare TextDecoder("latin1"):
+      // nei browser "latin1" e' in realta' windows-1252 e cambia i byte 0x80-0x9F,
+      // che nella codifica MacRoman sono proprio le lettere accentate
+      // (a` = 0x88 diventava 0xC6): nel PDF compresso sparivano le accentate.
+      try{
+        const grezzo = decodePDFRawStream(s.obj).decode();
+        let pezzi = "";
+        for(let i=0;i<grezzo.length;i+=8192) pezzi += String.fromCharCode.apply(null, grezzo.subarray(i,i+8192));
+        testo = pezzi;
+      }
       catch(e){ continue; }
       let n = 0;
       const nuovoTesto = testo.replace(reClip, function(m,a,b,cc,d){
