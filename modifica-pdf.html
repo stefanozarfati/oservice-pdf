@@ -89,7 +89,7 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
     <p>oppure tocca per sceglierlo dal dispositivo</p>
     <input type="file" id="fileInput" accept="application/pdf" hidden>
   </div>
-  <div class="kept"><b>Sposta, ridimensiona, elimina, sostituisci foto, aggiungi foto e testi</b>. La modifica dei testi già presenti arriverà in una fase successiva.</div>
+  <div class="kept"><b>Sposta, ridimensiona, elimina, sostituisci foto, aggiungi foto e testi</b>. Si possono prendere più oggetti insieme con un riquadro, e un clic su una lettera prende tutta la parola.</div>
 </div>
 
 <div id="editor" hidden>
@@ -106,6 +106,10 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
       <button class="btn" id="zOut" title="Riduci">&minus;</button>
       <button class="btn" id="zFit" title="Adatta alla larghezza">Adatta</button>
       <button class="btn" id="zIn" title="Ingrandisci">+</button>
+    </div>
+    <div class="grp">
+      <button class="btn on" id="btnWord" title="Un clic su una lettera prende tutta la parola">Parola intera</button>
+      <button class="btn" id="btnBox" title="Trascina un riquadro per prendere tutto quello che ci sta dentro">Riquadro</button>
     </div>
     <div class="grp">
       <button class="btn danger" id="btnDel" disabled>Elimina</button>
@@ -147,7 +151,9 @@ footer{max-width:760px;margin:26px auto 50px;padding:0 16px;font-family:var(--mo
       </div>
       <h3>Come si usa</h3>
       <div class="help">
-        Clic su una parte della pagina per sceglierla; trascinala per spostarla. <kbd>Maiusc</kbd>+clic aggiunge o toglie oggetti. Un secondo clic nello stesso punto sceglie l'oggetto sotto.<br><br>
+        Clic su una parte della pagina per sceglierla; trascinala per spostarla. Un secondo clic nello stesso punto sceglie l'oggetto sotto.<br><br>
+        <b>Più oggetti insieme</b>: <kbd>Maiusc</kbd>+clic aggiunge o toglie un oggetto; <kbd>Maiusc</kbd>+trascina (oppure il pulsante <b>Riquadro</b>) prende tutto quello che sta <i>tutto dentro</i> al riquadro.<br><br>
+        <b>Parola intera</b> acceso: clic su una lettera prende tutta la parola. Spegnilo per lavorare lettera per lettera.<br><br>
         <kbd>Canc</kbd> elimina, <kbd>Ctrl</kbd>+<kbd>Z</kbd> annulla, <kbd>Esc</kbd> deseleziona.
       </div>
     </aside>
@@ -238,12 +244,12 @@ function makeEngine(w) {
     fillColor(o) { return this.color(w.FPDFPageObj_GetFillColor, o); },
     strokeColor(o) { return this.color(w.FPDFPageObj_GetStrokeColor, o); },
     matrix(o) { const p = malloc(24); const ok = w.FPDFPageObj_GetMatrix(o, p); const m = ok ? [0, 4, 8, 12, 16, 20].map((k) => gf(p + k)) : null; free(p); return m; },
-    textInfo(page, o) {                                   // testo, corpo, nome font e colore di un oggetto di testo
-      const tp = w.FPDFText_LoadPage(page); let text = '';
+    textInfo(page, o, shared) {                           // testo, corpo, nome font e colore di un oggetto di testo
+      const tp = shared || w.FPDFText_LoadPage(page); let text = '';
       if (tp) {
         const n = w.FPDFTextObj_GetText(o, tp, 0, 0);
         if (n > 2) { const p = malloc(n); w.FPDFTextObj_GetText(o, tp, p, n); const h = heap(); text = new TextDecoder('utf-16le').decode(h.slice(p, p + n - 2)); free(p); }
-        w.FPDFText_ClosePage(tp);
+        if (!shared) w.FPDFText_ClosePage(tp);
       }
       const fp = malloc(4); const okS = w.FPDFTextObj_GetFontSize(o, fp); const size = okS ? gf(fp) : 12; free(fp);
       let name = ''; const font = w.FPDFTextObj_GetFont(o);
@@ -265,20 +271,33 @@ function makeEngine(w) {
       A.det = A.ax * A.by - A.bx * A.ay;
       return A;
     },
-    render(page, width, height) {
+    fontSize(o) { const p = malloc(4); const ok = w.FPDFTextObj_GetFontSize(o, p); const r = ok ? gf(p) : 0; free(p); return r; },
+    // Disegna SOLO la finestra (x, y, width, height) di una pagina resa a fullW x fullH pixel.
+    // Con width/height pari alla pagina intera e x = y = 0 equivale al disegno completo.
+    renderPart(page, fullW, fullH, x, y, width, height) {
       const bmp = w.FPDFBitmap_Create(width, height, 1);
       w.FPDFBitmap_FillRect(bmp, 0, 0, width, height, 0xffffffff);
-      w.FPDF_RenderPageBitmap(bmp, page, 0, 0, width, height, 0, 1);
+      w.FPDF_RenderPageBitmap(bmp, page, -x, -y, fullW, fullH, 0, 1);
       const buf = w.FPDFBitmap_GetBuffer(bmp), stride = w.FPDFBitmap_GetStride(bmp);
       const h = heap();
       const rgba = new Uint8ClampedArray(width * height * 4);
-      for (let y = 0; y < height; y++) {
-        let s = buf + y * stride, d = y * width * 4;
-        for (let x = 0; x < width; x++, s += 4, d += 4) { rgba[d] = h[s + 2]; rgba[d + 1] = h[s + 1]; rgba[d + 2] = h[s]; rgba[d + 3] = 255; }
+      if ((buf % 4) === 0 && (stride % 4) === 0) {                 // BGRA -> RGBA quattro byte per volta (circa 3 volte piu' veloce)
+        const src = new Uint32Array(h.buffer), dst = new Uint32Array(rgba.buffer);
+        const s0 = buf >> 2, sw = stride >> 2;
+        for (let r = 0; r < height; r++) {
+          let si = s0 + r * sw, di = r * width;
+          for (let c = 0; c < width; c++, si++, di++) { const v = src[si]; dst[di] = 0xFF000000 | ((v & 0xFF) << 16) | (v & 0xFF00) | ((v >>> 16) & 0xFF); }
+        }
+      } else {
+        for (let r = 0; r < height; r++) {
+          let si = buf + r * stride, d = r * width * 4;
+          for (let c = 0; c < width; c++, si += 4, d += 4) { rgba[d] = h[si + 2]; rgba[d + 1] = h[si + 1]; rgba[d + 2] = h[si]; rgba[d + 3] = 255; }
+        }
       }
       w.FPDFBitmap_Destroy(bmp);
       return rgba;
     },
+    render(page, width, height) { return this.renderPart(page, width, height, 0, 0, width, height); },
     save(doc) {
       const wr = w.PDFiumExt_OpenFileWriter();
       if (!w.PDFiumExt_SaveAsCopy(doc, wr)) { w.PDFiumExt_CloseFileWriter(wr); throw new Error('Salvataggio interno non riuscito.'); }
@@ -353,6 +372,32 @@ function controlGroup(objs, circles, C) {
     if (testi.some((t) => overlaps(o, t) && o.w <= 1.8 * t.w + 4 && o.hh <= 1.8 * t.hh + 4)) members.add(o);
   }
   return [...members].sort((a, b) => a.i - b.i);
+}
+// ---- Parola intera: le lettere di una parola sono spesso oggetti separati ----
+function textMetrics(o) {                            // matrice e corpo effettivo del testo (in cache sull'oggetto)
+  if (!o.tm) { const m = E.matrix(o.h) || [1, 0, 0, 1, 0, 0]; o.tm = { m, size: E.fontSize(o.h) * Math.hypot(m[0], m[1]), slanted: Math.abs(m[1]) > 0.02 * Math.hypot(m[0], m[1]) }; }
+  return o.tm;
+}
+// Stessa riga di base, stesso corpo, stesso colore, senza spazi in mezzo: è la stessa parola.
+function wordGroup(objs, seed) {
+  if (seed.type !== OBJ.TEXT) return [seed];
+  const A = textMetrics(seed);
+  if (!A.size || A.slanted) return [seed];
+  const cand = objs.filter((o) => {
+    if (o.type !== OBJ.TEXT) return false;
+    const B = textMetrics(o);
+    if (!B.size || B.slanted) return false;
+    if (Math.abs(B.m[5] - A.m[5]) > 0.2 * A.size) return false;                  // stessa riga di base
+    if (Math.abs(B.size - A.size) > 0.25 * A.size) return false;                 // stesso corpo
+    return similar(o.main, seed.main, 40);
+  }).sort((a, b) => a.b.l - b.b.l || a.i - b.i);
+  const k = cand.indexOf(seed);
+  if (k < 0) return [seed];
+  const maxGap = 0.2 * A.size;                        // uno spazio vale circa 0,25-0,3 del corpo: più stretto di così è la stessa parola
+  const out = [seed];
+  for (let j = k - 1; j >= 0; j--) { if (cand[j + 1].b.l - cand[j].b.r > maxGap) break; out.push(cand[j]); }
+  for (let j = k + 1; j < cand.length; j++) { if (cand[j].b.l - cand[j - 1].b.r > maxGap) break; out.push(cand[j]); }
+  return out.sort((a, b) => a.i - b.i);
 }
 // ---- Selezione "alla Acrobat": si clicca sul disegno vero (linea, puntino, riempimento), non sul suo rettangolo ----
 function geometry(o) {                               // sotto-percorsi in coordinate pagina, curve spezzate in tratti
@@ -499,7 +544,7 @@ async function resampleImage(bytes, kind, targetW) {
 /* ============================================================
    STATO E INTERFACCIA
    ============================================================ */
-const S = { doc: null, page: null, pageIndex: 0, pageCount: 0, pw: 0, ph: 0, objs: [], circles: [], controlOf: null, sel: [], mode: 'obj', zoom: 1, view: null, undo: [], fileName: 'documento', drag: null, lastNudge: 0, dirty: false, lastHit: null, rz: null, pending: null };
+const S = { doc: null, page: null, contentDirty: false, pageIndex: 0, pageCount: 0, pw: 0, ph: 0, objs: [], circles: null, controlOf: null, sel: [], mode: 'obj', zoom: 1, view: null, undo: [], fileName: 'documento', drag: null, band: null, lastNudge: 0, dirty: false, lastHit: null, rz: null, pending: null, word: true, box: false };
 const cv = $('cv'), ov = $('ov'), ctx = cv.getContext('2d'), octx = ov.getContext('2d');
 function setStatus(msg, kind) { const s = $('status'); s.textContent = msg || ''; s.className = 'status' + (kind ? ' ' + kind : ''); }
 const nf = (v, d = 1) => v.toFixed(d).replace('.', ',');
@@ -507,6 +552,7 @@ const nf = (v, d = 1) => v.toFixed(d).replace('.', ',');
 async function loadBytes(bytes, pageIndex = 0) {
   await loadEngine();
   const d = E.openDoc(bytes);
+  S.contentDirty = false;
   if (S.page) { E.w.FPDF_ClosePage(S.page); S.page = null; }
   if (S.doc) S.doc.close();
   S.doc = d;
@@ -514,7 +560,15 @@ async function loadBytes(bytes, pageIndex = 0) {
   if (!S.pageCount) throw new Error('Il PDF non contiene pagine.');
   openPage(Math.min(pageIndex, S.pageCount - 1), true);
 }
+/* Riscrivere il flusso di contenuto della pagina (FPDFPage_GenerateContent) costa
+   un decimo di secondo su una mappa con 8000 oggetti, e non serve per vedere il
+   risultato: PDFium disegna dall'elenco degli oggetti, già aggiornato. Lo facciamo
+   quindi solo quando il PDF va davvero letto o salvato. */
+function markContent() { S.contentDirty = true; }
+function syncContent() { if (S.contentDirty && S.page) { E.w.FPDFPage_GenerateContent(S.page); S.contentDirty = false; } }
+function saveDoc() { syncContent(); return E.save(S.doc.doc); }
 function openPage(idx, fit) {
+  syncContent();
   if (S.page) E.w.FPDF_ClosePage(S.page);
   S.pageIndex = idx;
   S.page = E.w.FPDF_LoadPage(S.doc.doc, idx);
@@ -527,13 +581,27 @@ function openPage(idx, fit) {
 }
 function refreshObjects() {
   S.objs = readObjects(S.page);
+  S.circles = null; S.controlOf = null;
+}
+// Aggiorna solo gli oggetti appena trasformati: ingombro nuovo, geometria e misure del testo da rileggere.
+function touchObjects(list) {
+  for (const o of list) {
+    const b = E.bounds(o.h) || o.b;
+    o.b = b; o.w = b.r - b.l; o.hh = b.t - b.b; o.cx = (b.l + b.r) / 2; o.cy = (b.b + b.t) / 2; o.area = o.w * o.hh;
+    o.geo = null; o.tm = null;
+  }
+  S.circles = null; S.controlOf = null;
+}
+function ensureCircles() {                               // calcolo pesante: solo quando serve davvero
+  if (S.circles) return S.circles;
   const cand = S.objs.filter(isControlCircle);
   // un cerchio è un "controllo" solo se ha al centro un puntino (o un cerchio concentrico) dello stesso colore: scarta i simboli di mappa tondi
   S.circles = cand.filter((c) => { const D = Math.max(c.w, c.hh); return S.objs.some((o) => o !== c && o.type === OBJ.PATH && similar(o.main, c.main) && Math.hypot(o.cx - c.cx, o.cy - c.cy) < 0.1 * D && (o.w < 0.3 * D || cand.includes(o))); });
-  S.controlOf = null;
+  return S.circles;
 }
 function ensureControlMap() {
   if (S.controlOf) return;
+  ensureCircles();
   S.controlOf = new Map();
   for (const c of S.circles) for (const m of controlGroup(S.objs, S.circles, c)) if (!S.controlOf.has(m.i)) S.controlOf.set(m.i, c);
 }
@@ -551,6 +619,15 @@ function renderView() {
   const A = E.viewAffine(S.page, pxW, pxH);
   S.view = { pxW, pxH, A };
   drawOverlay();
+}
+// Ridisegna solo una finestra del canvas (coordinate dispositivo). Il resto resta com'è.
+function renderRegion(x, y, w, h) {
+  const PW = S.view.pxW, PH = S.view.pxH;
+  const x0 = Math.max(0, Math.floor(x)), y0 = Math.max(0, Math.floor(y));
+  const x1 = Math.min(PW, Math.ceil(x + w)), y1 = Math.min(PH, Math.ceil(y + h));
+  if (x1 <= x0 || y1 <= y0) return;
+  const rgba = E.renderPart(S.page, PW, PH, x0, y0, x1 - x0, y1 - y0);
+  ctx.putImageData(new ImageData(rgba, x1 - x0, y1 - y0), x0, y0);
 }
 // conversioni dispositivo <-> pagina
 const dev2page = (dx, dy) => { const A = S.view.A; return [A.x0 + A.ax * dx + A.bx * dy, A.y0 + A.ay * dx + A.by * dy]; };
@@ -584,7 +661,13 @@ const opposite = (k) => (k === 'l' ? 'r' : k === 'r' ? 'l' : k);
 const opposite2 = (k) => (k === 'b' ? 't' : k === 't' ? 'b' : k);
 function handlePos(u, h) { return page2dev(hx(u, h[0]), hy(u, h[1])); }
 const handlesOk = () => { if (!S.sel.length) return false; const R = rectToDev(selUnion()), m = Math.max(28, ov.width / 60); return R.w >= m || R.h >= m; };   // oggetti minuscoli: niente maniglie (si usano le caselle in mm)
-const hRadius = () => { const R = rectToDev(selUnion()); return Math.max(4, Math.min(Math.max(8, ov.width / 130), Math.max(R.w, R.h) / 8)); };   // zona di presa: si restringe sugli oggetti piccoli, così resta spazio per afferrarli e spostarli
+function hRadius() {                                     // zona di presa: si restringe sugli oggetti piccoli e bassi, così resta spazio per afferrarli e spostarli
+  const R = rectToDev(selUnion());
+  const big = Math.max(R.w, R.h), small = Math.min(R.w, R.h);
+  return Math.max(3.5, Math.min(Math.max(8, ov.width / 130), big / 8, Math.max(4, small / 2.6)));
+}
+// il cuore della selezione serve sempre a spostare, mai a ridimensionare
+function inCore(dx, dy) { if (!S.sel.length) return false; const R = rectToDev(selUnion()); return R.w > 0 && R.h > 0 && dx > R.x + R.w * 0.3 && dx < R.x + R.w * 0.7 && dy > R.y + R.h * 0.3 && dy < R.y + R.h * 0.7; }
 function drawHandles() {
   if (!handlesOk()) return;
   const u = selUnion(), sz = Math.min(Math.max(5, ov.width / 190), hRadius() * 2);
@@ -624,39 +707,82 @@ function updateGlobalUI() {
   $('btnSave').disabled = !S.doc;
 }
 
-/* ---------- operazioni con annullamento ---------- */
+/* ---------- operazioni con annullamento ----------
+   Per spostamenti e ridimensionamenti NON si risalva tutto il PDF (su una mappa
+   sono 6 MB e un decimo di secondo ogni volta): basta ricordare la trasformazione
+   inversa, che è un passo da sei numeri. Il salvataggio completo resta solo per le
+   modifiche che cambiano l'elenco degli oggetti (elimina, aggiungi, sostituisci). */
 function snapshot() {                                  // stato PRIMA della modifica
-  const bytes = E.save(S.doc.doc);
+  const bytes = saveDoc();
   S.undo.push({ bytes, page: S.pageIndex }); S.dirty = true;
   if (S.undo.length > 10) S.undo.shift();
   updateGlobalUI();
 }
+function pushXform(objs, inv, coalesce) {              // inv = matrice che riporta gli oggetti dove stavano
+  const idxs = objs.map((o) => o.i), key = idxs.join(',');
+  const last = S.undo[S.undo.length - 1];
+  if (coalesce && last && last.xform && last.key === key && last.page === S.pageIndex) last.inv = mul(inv, last.inv);   // più frecce di fila = un solo annulla
+  else {
+    S.undo.push({ xform: true, idxs, key, inv, page: S.pageIndex });
+    if (S.undo.length > 10) S.undo.shift();
+  }
+  S.dirty = true; updateGlobalUI();
+}
 async function undo() {
   const st = S.undo.pop(); if (!st) return;
+  if (st.xform) {
+    if (st.page !== S.pageIndex) openPage(st.page, false);
+    const objs = st.idxs.map((i) => S.objs[i]).filter(Boolean);
+    if (objs.length === st.idxs.length) {
+      const before = objs.reduce((u, o) => u ? dirtyUnion(u, o.b) : { ...o.b }, null);
+      for (const o of objs) E.w.FPDFPageObj_Transform(o.h, st.inv[0], st.inv[1], st.inv[2], st.inv[3], st.inv[4], st.inv[5]);
+      markContent();
+      touchObjects(objs);
+      S.sel = objs;
+      renderDirty(objs.reduce((u, o) => dirtyUnion(u, o.b), before));
+      S.dirty = true; updateGlobalUI(); setStatus('Annullato.', 'ok');
+      return;
+    }
+    S.undo.length = 0; updateGlobalUI(); setStatus('Non riesco ad annullare questo passo.', 'err'); return;
+  }
   await loadBytes(st.bytes, st.page);
   S.dirty = true; updateGlobalUI(); setStatus('Annullato.', 'ok');
 }
+const dirtyUnion = (a, b) => ({ l: Math.min(a.l, b.l), b: Math.min(a.b, b.b), r: Math.max(a.r, b.r), t: Math.max(a.t, b.t) });
+// Ridisegna la zona interessata (vecchia + nuova posizione) invece di tutta la pagina.
+function renderDirty(pageRect, objs) {
+  const R = rectToDev(pageRect), sc = S.view.pxW / S.pw;
+  let pad = 14;
+  for (const o of (objs || S.sel)) if (o.type === OBJ.PATH && o.stroked) pad = Math.max(pad, 14 + Math.abs(E.strokeWidth(o.h)) * sc);
+  const x = R.x - pad, y = R.y - pad, w = R.w + 2 * pad, h = R.h + 2 * pad;
+  const vis = Math.max(0, Math.min(S.view.pxW, x + w) - Math.max(0, x)) * Math.max(0, Math.min(S.view.pxH, y + h) - Math.max(0, y));
+  if (vis > 0.5 * S.view.pxW * S.view.pxH) { renderView(); return; }     // zona enorme: tanto vale rifare tutto
+  renderRegion(x, y, w, h);
+  drawOverlay();
+}
 function reselect(indices) { S.sel = indices.map((i) => S.objs[i]).filter(Boolean); }
+function applyXform(m, inv, coalesce) {               // m = trasformazione da applicare, inv = quella che la annulla
+  const objs = S.sel.slice();
+  const before = objs.reduce((u, o) => u ? dirtyUnion(u, o.b) : { ...o.b }, null);
+  pushXform(objs, inv, coalesce);
+  for (const o of objs) E.w.FPDFPageObj_Transform(o.h, m[0], m[1], m[2], m[3], m[4], m[5]);
+  markContent();
+  touchObjects(objs);
+  renderDirty(objs.reduce((u, o) => dirtyUnion(u, o.b), before), objs);
+}
 function moveSelection(dxPt, dyPt, coalesce) {
   if (!S.sel.length) return;
   const now = Date.now();
-  if (!(coalesce && now - S.lastNudge < 900 && S.undo.length)) snapshot();   // più frecce ravvicinate = un solo passo di annullamento
+  const merge = !!(coalesce && now - S.lastNudge < 900);                 // più frecce ravvicinate = un solo passo di annullamento
   S.lastNudge = coalesce ? now : 0;
-  const idx = S.sel.map((o) => o.i);
-  for (const o of S.sel) E.w.FPDFPageObj_Transform(o.h, 1, 0, 0, 1, dxPt, dyPt);
-  E.w.FPDFPage_GenerateContent(S.page);
-  refreshObjects(); reselect(idx);
-  renderView();
+  applyXform([1, 0, 0, 1, dxPt, dyPt], [1, 0, 0, 1, -dxPt, -dyPt], merge);
 }
 function resizeSelection(sx, sy, ax, ay) {            // scala la selezione rispetto al punto fisso (ax, ay), in coordinate pagina
   if (!S.sel.length || !isFinite(sx) || !isFinite(sy) || sx <= 0 || sy <= 0) return;
   if (Math.abs(sx - 1) < 1e-6 && Math.abs(sy - 1) < 1e-6) return;
-  snapshot(); S.lastNudge = 0;
-  const idx = S.sel.map((o) => o.i);
-  for (const o of S.sel) E.w.FPDFPageObj_Transform(o.h, sx, 0, 0, sy, ax * (1 - sx), ay * (1 - sy));
-  E.w.FPDFPage_GenerateContent(S.page);
-  refreshObjects(); reselect(idx);
-  renderView();
+  S.lastNudge = 0;
+  const ix = 1 / sx, iy = 1 / sy;
+  applyXform([sx, 0, 0, sy, ax * (1 - sx), ay * (1 - sy)], [ix, 0, 0, iy, ax * (1 - ix), ay * (1 - iy)], false);
 }
 function deleteSelection() {
   if (!S.sel.length) return;
@@ -666,7 +792,7 @@ function deleteSelection() {
     if (!E.w.FPDFPage_RemoveObject(S.page, o.h)) throw new Error('Eliminazione non riuscita su un oggetto.');
     E.w.FPDFPageObj_Destroy(o.h);
   }
-  E.w.FPDFPage_GenerateContent(S.page);
+  E.w.FPDFPage_GenerateContent(S.page); S.contentDirty = false;
   S.sel = [];
   refreshObjects(); renderView();
   setStatus('Eliminati ' + n + (n === 1 ? ' oggetto' : ' oggetti') + '. Ctrl+Z per annullare.', 'ok');
@@ -727,10 +853,13 @@ function selectAtPoint(px, py, additive) {
     const hits = hitAll(S.objs, px, py, pad);
     if (!hits.length) { if (!additive) S.sel = []; drawOverlay(); S.lastHit = null; return; }
     let k = 0;                                         // secondo clic nello stesso punto = passa all'oggetto sotto
-    const same = S.lastHit && Math.hypot(S.lastHit.x - px, S.lastHit.y - py) < 2 * pad && S.sel.length === 1;
-    if (same) { const cur = hits.indexOf(S.sel[0]); if (cur >= 0) k = (cur + 1) % hits.length; }
-    S.lastHit = { x: px, y: py };
-    picked = [hits[k]];
+    const same = S.lastHit && Math.hypot(S.lastHit.x - px, S.lastHit.y - py) < 2 * pad && S.sel.length;
+    if (same) {
+      k = (S.lastHit.k + 1) % hits.length;
+      for (let n = 0; n < hits.length && S.sel.includes(hits[k]); n++) k = (k + 1) % hits.length;   // salta quello che è già preso (p.es. le altre lettere della parola)
+    }
+    S.lastHit = { x: px, y: py, k };
+    picked = S.word ? wordGroup(S.objs, hits[k]) : [hits[k]];
   }
   if (additive) {
     const all = picked.every((o) => S.sel.includes(o));
@@ -738,21 +867,54 @@ function selectAtPoint(px, py, additive) {
   } else S.sel = picked;
   drawOverlay();
   if (S.mode === 'ctl' && !additive) setStatus('Controllo selezionato: ' + picked.length + ' oggetti. Trascina o usa le frecce. Se manca qualcosa, Maiusc+clic in modalità Oggetto.');
+  else if (picked.length > 1 && S.word) setStatus('Parola intera: presi ' + picked.length + ' pezzi di testo. Spegni «Parola intera» per prenderne uno solo.');
   else setStatus('');
+}
+const isVisible = (o) => {                            // oggetti davvero disegnati (niente tracciati invisibili)
+  if (o.type !== OBJ.PATH) return true;
+  return (o.filled && !(o.fill && o.fill.a === 0)) || o.stroked;
+};
+function selectInRect(r, additive) {                  // r in coordinate pagina: prende quello che ci sta tutto dentro
+  const t = 0.4;
+  const picked = S.objs.filter((o) => isVisible(o) && o.b.l >= r.l - t && o.b.r <= r.r + t && o.b.b >= r.b - t && o.b.t <= r.t + t);
+  if (!picked.length) {
+    if (!additive) { S.sel = []; }
+    drawOverlay();
+    setStatus('Il riquadro non contiene nessun oggetto intero: allargalo un po’.');
+    return;
+  }
+  S.sel = additive ? [...S.sel, ...picked.filter((o) => !S.sel.includes(o))] : picked;
+  S.lastHit = null;
+  drawOverlay();
+  setStatus('Presi ' + S.sel.length + (S.sel.length === 1 ? ' oggetto' : ' oggetti') + '. Trascina, usa le frecce o Elimina.');
+}
+function drawBand(b) {
+  octx.clearRect(0, 0, ov.width, ov.height);
+  const x = Math.min(b.x0, b.x1), y = Math.min(b.y0, b.y1), w = Math.abs(b.x1 - b.x0), h = Math.abs(b.y1 - b.y0);
+  octx.save();
+  octx.fillStyle = 'rgba(190,24,93,.10)'; octx.fillRect(x, y, w, h);
+  octx.strokeStyle = ACCENT; octx.lineWidth = Math.max(1, ov.width / 900) * 1.4; octx.setLineDash([5 * octx.lineWidth, 4 * octx.lineWidth]);
+  octx.strokeRect(x, y, w, h);
+  octx.restore();
 }
 ov.addEventListener('pointerdown', (e) => {
   if (!S.page || (e.pointerType === 'mouse' && e.button !== 0)) return;
   flushNudge();
   const [dx, dy] = eventDev(e);
   if (S.pending) { const [qx, qy] = dev2page(dx, dy); e.preventDefault(); placePending(qx, qy); return; }
-  const hnd = e.altKey ? null : handleAt(dx, dy);
+  const inSel = (() => { if (!S.sel.length) return false; const R = rectToDev(selUnion()), q = 6; return dx >= R.x - q && dx <= R.x + R.w + q && dy >= R.y - q && dy <= R.y + R.h + q; })();
+  const grab = (e.altKey || inCore(dx, dy)) ? null : handleAt(dx, dy);
+  if ((e.shiftKey || (S.box && !inSel)) && !grab) {   // riquadro di selezione (se non si muove resta un clic normale)
+    S.band = { x0: dx, y0: dy, x1: dx, y1: dy, id: e.pointerId, add: e.shiftKey, moved: false };
+    ov.setPointerCapture(e.pointerId); e.preventDefault(); return;
+  }
+  const hnd = grab;
   if (hnd) {
     const u = selUnion();
     S.rz = { h: hnd, u: { ...u }, id: e.pointerId, ax: hx(u, opposite(hnd[0])), ay: hy(u, opposite2(hnd[1])), sx: 1, sy: 1 };
     ov.setPointerCapture(e.pointerId); e.preventDefault(); return;
   }
-  const inside = (() => { if (!S.sel.length) return false; const R = rectToDev(selUnion()), p = 6; return dx >= R.x - p && dx <= R.x + R.w + p && dy >= R.y - p && dy <= R.y + R.h + p; })();
-  if (inside && !e.shiftKey) {
+  if (inSel && !e.shiftKey) {
     S.drag = { x0: dx, y0: dy, moved: false, id: e.pointerId };
     ov.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -770,6 +932,12 @@ function rzScale(e, r = S.rz) {                        // fattori di scala dal p
   const mn = 0.02; return [Math.max(mn, sx), Math.max(mn, sy)];
 }
 ov.addEventListener('pointermove', (e) => {
+  if (S.band && e.pointerId === S.band.id) {
+    const [dx, dy] = eventDev(e);
+    S.band.x1 = dx; S.band.y1 = dy;
+    if (!S.band.moved && Math.hypot(dx - S.band.x0, dy - S.band.y0) < 4) return;
+    S.band.moved = true; drawBand(S.band); return;
+  }
   if (S.rz && e.pointerId === S.rz.id) {
     const [sx, sy] = rzScale(e); S.rz.sx = sx; S.rz.sy = sy;
     const u = S.rz.u, c = [[u.l, u.b], [u.r, u.b], [u.l, u.t], [u.r, u.t]].map(([x, y]) => page2dev(S.rz.ax + (x - S.rz.ax) * sx, S.rz.ay + (y - S.rz.ay) * sy));
@@ -780,13 +948,22 @@ ov.addEventListener('pointermove', (e) => {
     octx.save(); octx.strokeStyle = ACCENT; octx.lineWidth = Math.max(1, ov.width / 900) * 1.6; octx.setLineDash([6, 4]); octx.strokeRect(x0, y0, w, h); octx.restore();
     return;
   }
-  if (!S.drag) { const [mx, my] = eventDev(e), hh = handleAt(mx, my); ov.style.cursor = hh ? HCUR[hh.join('')] || 'pointer' : (S.sel.length ? 'move' : 'crosshair'); }
+  if (!S.drag) { const [mx, my] = eventDev(e), hh = inCore(mx, my) ? null : handleAt(mx, my); ov.style.cursor = hh ? HCUR[hh.join('')] || 'pointer' : (S.box || !S.sel.length ? 'crosshair' : 'move'); }
   if (!S.drag || e.pointerId !== S.drag.id) return;
   const [dx, dy] = eventDev(e), ddx = dx - S.drag.x0, ddy = dy - S.drag.y0;
   if (!S.drag.moved && Math.hypot(ddx, ddy) < 3) return;
   S.drag.moved = true; drawOverlay(ddx, ddy);
 });
 ov.addEventListener('pointerup', (e) => {
+  if (S.band && e.pointerId === S.band.id) {
+    const b = S.band; S.band = null;
+    const [dx, dy] = eventDev(e);
+    if (!b.moved) { const [px, py] = dev2page(dx, dy); selectAtPoint(px, py, b.add); return; }
+    const c = [dev2page(b.x0, b.y0), dev2page(dx, b.y0), dev2page(b.x0, dy), dev2page(dx, dy)];
+    const xs = c.map((q) => q[0]), ys = c.map((q) => q[1]);
+    selectInRect({ l: Math.min(...xs), r: Math.max(...xs), b: Math.min(...ys), t: Math.max(...ys) }, b.add);
+    return;
+  }
   if (S.rz && e.pointerId === S.rz.id) {
     const r = S.rz; S.rz = null; const [sx, sy] = rzScale(e, r);
     try { resizeSelection(sx, sy, r.ax, r.ay); } catch (err) { setStatus(err.message, 'err'); }
@@ -799,7 +976,7 @@ ov.addEventListener('pointerup', (e) => {
   const p0 = dev2page(d.x0, d.y0), p1 = dev2page(dx, dy);
   try { moveSelection(p1[0] - p0[0], p1[1] - p0[1], false); } catch (err) { setStatus(err.message, 'err'); }
 });
-ov.addEventListener('pointercancel', () => { if (S.rz) { S.rz = null; drawOverlay(); } if (S.drag) { S.drag = null; drawOverlay(); } });
+ov.addEventListener('pointercancel', () => { if (S.band) { S.band = null; drawOverlay(); } if (S.rz) { S.rz = null; drawOverlay(); } if (S.drag) { S.drag = null; drawOverlay(); } });
 
 /* ---------- tastiera ---------- */
 document.addEventListener('keydown', (e) => {
@@ -810,7 +987,7 @@ document.addEventListener('keydown', (e) => {
   try {
     if (!/^Arrow(Left|Right|Up|Down)$/.test(k)) flushNudge();
     if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
-    if (k === 'Escape') { if (S.pending) { S.pending = null; ov.style.cursor = 'crosshair'; setStatus('Aggiunta annullata.'); return; } S.sel = []; drawOverlay(); return; }
+    if (k === 'Escape') { if (S.band) { S.band = null; drawOverlay(); return; } if (S.pending) { S.pending = null; ov.style.cursor = 'crosshair'; setStatus('Aggiunta annullata.'); return; } S.sel = []; drawOverlay(); return; }
     if (!S.sel.length) return;
     if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
     const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[k];
@@ -834,6 +1011,15 @@ $('dimW').addEventListener('change', () => applyDim('w'));
 $('dimH').addEventListener('change', () => applyDim('h'));
 
 /* ---------- barra strumenti ---------- */
+function syncToggles() {
+  $('btnWord').classList.toggle('on', S.word);
+  $('btnBox').classList.toggle('on', S.box);
+  ov.style.cursor = S.box ? 'crosshair' : (S.sel.length ? 'move' : 'crosshair');
+}
+try { const v = localStorage.getItem('modpdf-parola'); if (v !== null) S.word = v === '1'; } catch (_) {}
+$('btnWord').addEventListener('click', () => { S.word = !S.word; try { localStorage.setItem('modpdf-parola', S.word ? '1' : '0'); } catch (_) {} syncToggles(); setStatus(S.word ? 'Parola intera accesa: un clic su una lettera prende tutta la parola.' : 'Parola intera spenta: si prende una lettera (o un oggetto) alla volta.'); });
+$('btnBox').addEventListener('click', () => { S.box = !S.box; syncToggles(); setStatus(S.box ? 'Riquadro acceso: trascina sulla pagina per prendere tutto quello che sta dentro al riquadro.' : 'Riquadro spento: torna il trascinamento normale (Maiusc+trascina fa comunque il riquadro).'); });
+syncToggles();
 $('btnDel').addEventListener('click', () => { try { flushNudge(); deleteSelection(); } catch (err) { setStatus(err.message, 'err'); } });
 $('btnUndo').addEventListener('click', () => { flushNudge(); undo().catch((err) => setStatus(err.message, 'err')); });
 $('pgPrev').addEventListener('click', () => { flushNudge(); openPage(S.pageIndex - 1, false); });
@@ -876,8 +1062,7 @@ $('btnSave').addEventListener('click', async () => {
   try {
     flushNudge();
     setStatus('Preparo il file…');
-    E.w.FPDFPage_GenerateContent(S.page);
-    const clean = await cleanPdf(E.save(S.doc.doc));
+    const clean = await cleanPdf(saveDoc());
     const url = URL.createObjectURL(new Blob([clean], { type: 'application/pdf' }));
     const a = document.createElement('a'); a.href = url; a.download = S.fileName + '-modificato.pdf';
     document.body.appendChild(a); a.click(); a.remove();
@@ -947,7 +1132,7 @@ async function placePending(px, py) {
     const W = Math.min(60 * MM, S.pw * 0.4), H = W * o.h / o.w;
     const M0 = [W, 0, 0, H, px - W / 2, py - H / 2], plan = planPhoto(P.info, M0, 'fit');
     setStatus('Aggiungo la foto…'); snapshot();
-    const out = await drawImageOnPage(E.save(S.doc.doc), S.pageIndex, P.kind, P.bytes, M0, 'fit', plan);
+    const out = await drawImageOnPage(saveDoc(), S.pageIndex, P.kind, P.bytes, M0, 'fit', plan);
     const pageIdx = S.pageIndex; await loadBytes(out, pageIdx);
     for (let i = S.objs.length - 1; i >= 0; i--) if (S.objs[i].type === OBJ.IMAGE) { S.sel = [S.objs[i]]; break; }
     drawOverlay(); updateGlobalUI();
@@ -1023,7 +1208,7 @@ async function placeText(sp, px, py) {
   try {
     setStatus('Aggiungo il testo…'); snapshot();
     const before = S.objs.length;
-    const out = await drawTextOnPage(E.save(S.doc.doc), S.pageIndex, sp, px, py);
+    const out = await drawTextOnPage(saveDoc(), S.pageIndex, sp, px, py);
     const pageIdx = S.pageIndex; await loadBytes(out, pageIdx);
     const added = S.objs.slice(before).filter((o) => o.type === OBJ.TEXT);
     S.sel = added; drawOverlay(); updateGlobalUI();
@@ -1046,13 +1231,27 @@ function matchTextFont(name) {                        // dal nome del font nel P
 }
 async function openTextEdit() {
   if (!S.sel.length || !S.sel.every((o) => o.type === OBJ.TEXT)) return;
-  const infos = S.sel.map((o) => ({ o, ...E.textInfo(S.page, o.h) }));
+  const tp = E.w.FPDFText_LoadPage(S.page);                            // una volta sola per tutta la selezione
+  let infos;
+  try { infos = S.sel.map((o) => ({ o, ...E.textInfo(S.page, o.h, tp) })); } finally { if (tp) E.w.FPDFText_ClosePage(tp); }
   if (infos.some((t) => !t.m || Math.abs(t.m[1]) > 0.02 * Math.hypot(t.m[0], t.m[1]) || Math.abs(t.m[2]) > 0.02 * Math.hypot(t.m[2], t.m[3]))) { setStatus('Questo testo è ruotato o inclinato: per ora non si può modificare (si può spostare, ridimensionare o eliminare).', 'err'); return; }
-  infos.sort((a, b) => b.m[5] - a.m[5] || a.m[4] - b.m[4]);            // righe dall'alto al basso
-  const t0 = infos[0], eff = (t) => t.size * Math.hypot(t.m[0], t.m[1]);
+  const eff = (t) => t.size * Math.hypot(t.m[0], t.m[1]);
+  // le lettere e i pezzi di una stessa riga si rimettono insieme; le righe vanno dall'alto al basso
+  const righe = [];
+  for (const t of infos.slice().sort((a, b) => b.m[5] - a.m[5] || a.m[4] - b.m[4])) {
+    const L = righe.find((r) => Math.abs(r.y - t.m[5]) <= 0.25 * Math.max(eff(t), 1));
+    if (L) L.items.push(t); else righe.push({ y: t.m[5], items: [t] });
+  }
+  righe.forEach((r) => r.items.sort((a, b) => a.m[4] - b.m[4]));
+  const rigaTesto = (r) => r.items.map((t, k) => {
+    if (!k) return t.text;
+    const pre = r.items[k - 1], gap = t.o.b.l - pre.o.b.r;              // spazio vero fra due pezzi: lo rimettiamo
+    return (gap > 0.2 * Math.max(eff(t), 1) && !/\s$/.test(pre.text) && !/^\s/.test(t.text) ? ' ' : '') + t.text;
+  }).join('');
+  const t0 = righe[0].items[0];
   await fillTextFonts();
   const mt = matchTextFont(t0.name);
-  S.textEdit = { objs: infos.map((t) => t.o), x: t0.m[4], y: t0.m[5], lh: infos.length > 1 ? Math.abs(infos[0].m[5] - infos[infos.length - 1].m[5]) / (infos.length - 1) : 0, orig: infos.map((t) => t.text).join('\n'), fontName: t0.name, exact: mt.exact };
+  S.textEdit = { objs: infos.map((t) => t.o), x: t0.m[4], y: righe[0].y, lh: righe.length > 1 ? Math.abs(righe[0].y - righe[righe.length - 1].y) / (righe.length - 1) : 0, orig: righe.map(rigaTesto).join('\n'), fontName: t0.name, exact: mt.exact };
   $('txtTitle').textContent = 'Modifica testo'; $('txtOk').textContent = 'Applica'; $('txtOk').disabled = false;
   $('txtVal').value = S.textEdit.orig; $('txtFont').value = mt.font; syncTextCaps();
   $('txtBold').checked = mt.bold && !$('txtBold').disabled; $('txtItalic').checked = mt.italic && !$('txtItalic').disabled;
@@ -1068,9 +1267,9 @@ async function applyTextEdit(sp) {
     setStatus('Applico la modifica…'); snapshot();
     const before = S.objs.length - T.objs.length;
     for (const o of T.objs) { if (!E.w.FPDFPage_RemoveObject(S.page, o.h)) throw new Error('Non riesco a togliere il vecchio testo.'); E.w.FPDFPageObj_Destroy(o.h); }
-    E.w.FPDFPage_GenerateContent(S.page);
+    E.w.FPDFPage_GenerateContent(S.page); S.contentDirty = false;
     if (T.lh) sp.lh = T.lh;
-    const out = await drawTextOnPage(E.save(S.doc.doc), S.pageIndex, sp, T.x, T.y, true);
+    const out = await drawTextOnPage(saveDoc(), S.pageIndex, sp, T.x, T.y, true);
     const pageIdx = S.pageIndex; await loadBytes(out, pageIdx);
     S.sel = S.objs.slice(before).filter((o) => o.type === OBJ.TEXT); drawOverlay(); updateGlobalUI();
     setStatus('Testo modificato. Ctrl+Z annulla.', 'ok');
@@ -1094,17 +1293,17 @@ $('photoOk').addEventListener('click', async () => {
     snapshot();
     if (!E.w.FPDFPage_RemoveObject(S.page, target.h)) throw new Error('Non riesco a togliere la vecchia foto.');
     E.w.FPDFPageObj_Destroy(target.h);
-    E.w.FPDFPage_GenerateContent(S.page);
-    const out = await drawImageOnPage(E.save(S.doc.doc), pageIdx, photo.kind, bytes, M0, mode, plan);
+    E.w.FPDFPage_GenerateContent(S.page); S.contentDirty = false;
+    const out = await drawImageOnPage(saveDoc(), pageIdx, photo.kind, bytes, M0, mode, plan);
     await loadBytes(out, pageIdx);
     updateGlobalUI();
     setStatus('Foto sostituita' + (bytes !== photo.bytes ? ' (ridotta a 300 dpi)' : photo.converted ? ' (HEIC convertita in JPEG)' : photo.kind === 'png' ? ' (PNG senza perdita)' : ' senza ricomprimerla') + '. La nuova foto è in primo piano sulla pagina. Ctrl+Z per annullare.', 'ok');
   } catch (err) { setStatus('Sostituzione non riuscita: ' + err.message, 'err'); if (dlg.open) dlg.close(); }
 });
 
-window.__S = S; window.__test = { openTextEdit, applyTextEdit, placePending, placeText, drawTextOnPage, readImage, resizeSelection, handleAt, handlePos, hitAll, hitObject, readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
+window.__S = S; window.__test = { syncContent, saveDoc, wordGroup, selectInRect, selectAtPoint, textMetrics, renderRegion, renderDirty, undo, moveSelection, drawOverlay, openTextEdit, applyTextEdit, placePending, placeText, drawTextOnPage, readImage, resizeSelection, handleAt, handlePos, hitAll, hitObject, readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
 </script>
-<script>window.VERSIONE="48";</script>
+<script>window.VERSIONE="49";</script>
 <script src="versione.js"></script>
 </body>
 </html>
