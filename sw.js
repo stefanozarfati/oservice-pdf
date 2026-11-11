@@ -1,6 +1,6 @@
 // La versione e' la stessa che si legge in Home ("Versione NN"): un numero
 // solo, usato per il nome della cache e per l'aggiornamento automatico.
-const VERSIONE='49';
+const VERSIONE='50';
 const CACHE='oservice-suite-v'+VERSIONE;
 const ASSETS=[
   './','./index.html','./attestati.html','./impaginatore.html','./comprimi.html','./classifiche.html','./retro-foto-orienteering.html','./modifica-pdf.html','./font.html','./manifest.json',

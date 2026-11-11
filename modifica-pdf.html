@@ -256,6 +256,14 @@ function makeEngine(w) {
       if (font) { const need = w.FPDFFont_GetBaseFontName(font, 0, 0); if (need > 1) { const p = malloc(need); w.FPDFFont_GetBaseFontName(font, p, need); name = new TextDecoder().decode(heap().slice(p, p + need - 1)); free(p); } }
       return { text, size, name, color: this.fillColor(o), m: this.matrix(o) };
     },
+    textOnly(o, tp) {                                     // solo i caratteri dell'oggetto (senza font, colori, matrici)
+      if (!tp) return '';
+      const n = w.FPDFTextObj_GetText(o, tp, 0, 0);
+      if (n <= 2) return '';
+      const p = malloc(n); w.FPDFTextObj_GetText(o, tp, p, n);
+      const t = new TextDecoder('utf-16le').decode(heap().slice(p, p + n - 2)); free(p);
+      return t;
+    },
     drawMode(o) { const p = malloc(8); w.FPDFPath_GetDrawMode(o, p, p + 4); const r = [gi(p), gi(p + 4)]; free(p); return r; },
     pixelSize(o) { const p = malloc(8); const ok = w.FPDFImageObj_GetImagePixelSize(o, p, p + 4); const r = ok ? { w: gu(p), h: gu(p + 4) } : null; free(p); return r; },
     segPoint(o, k) { const seg = w.FPDFPath_GetPathSegment(o, k); const p = malloc(8); w.FPDFPathSegment_GetPoint(seg, p, p + 4); const r = [gf(p), gf(p + 4)]; free(p); return { x: r[0], y: r[1], t: w.FPDFPathSegment_GetType(seg), close: !!w.FPDFPathSegment_GetClose(seg) }; },
@@ -374,29 +382,62 @@ function controlGroup(objs, circles, C) {
   return [...members].sort((a, b) => a.i - b.i);
 }
 // ---- Parola intera: le lettere di una parola sono spesso oggetti separati ----
+function textChars(o) {                              // i caratteri dell'oggetto, letti una volta sola
+  if (o.tx === undefined) {
+    if (S.tpage === null) S.tpage = E.w.FPDFText_LoadPage(S.page) || 0;
+    o.tx = E.textOnly(o.h, S.tpage);
+  }
+  return o.tx;
+}
+function dropTextPage() { if (S.tpage) E.w.FPDFText_ClosePage(S.tpage); S.tpage = null; }
 function textMetrics(o) {                            // matrice e corpo effettivo del testo (in cache sull'oggetto)
-  if (!o.tm) { const m = E.matrix(o.h) || [1, 0, 0, 1, 0, 0]; o.tm = { m, size: E.fontSize(o.h) * Math.hypot(m[0], m[1]), slanted: Math.abs(m[1]) > 0.02 * Math.hypot(m[0], m[1]) }; }
+  if (!o.tm) {
+    const m = E.matrix(o.h) || [1, 0, 0, 1, 0, 0];
+    // attenzione: il corpo può arrivare NEGATIVO (testo capovolto nella matrice del PDF): va preso in valore assoluto,
+    // altrimenti ogni soglia calcolata su di esso diventa negativa e non combacia più niente.
+    let size = Math.abs(E.fontSize(o.h) * Math.hypot(m[0], m[1]));
+    if (!(size > 0.01)) size = o.hh / 0.72 || 0;       // font senza corpo dichiarato: si stima dall'ingombro
+    o.tm = { m, size, slanted: Math.abs(m[1]) > 0.02 * Math.hypot(m[0], m[1]) };
+  }
   return o.tm;
 }
+const sameInk = (a, b) => (!a && !b) || similar(a, b, 40);
 // Stessa riga di base, stesso corpo, stesso colore, senza spazi in mezzo: è la stessa parola.
 function wordGroup(objs, seed) {
   if (seed.type !== OBJ.TEXT) return [seed];
   const A = textMetrics(seed);
-  if (!A.size || A.slanted) return [seed];
-  const cand = objs.filter((o) => {
-    if (o.type !== OBJ.TEXT) return false;
+  if (!(A.size > 0.01) || A.slanted) return [seed];
+  const sameLine = (o) => {                           // stessa riga di base e corpo non troppo diverso (i titoli ad arco cambiano corpo lettera per lettera)
     const B = textMetrics(o);
-    if (!B.size || B.slanted) return false;
-    if (Math.abs(B.m[5] - A.m[5]) > 0.2 * A.size) return false;                  // stessa riga di base
-    if (Math.abs(B.size - A.size) > 0.25 * A.size) return false;                 // stesso corpo
-    return similar(o.main, seed.main, 40);
-  }).sort((a, b) => a.b.l - b.b.l || a.i - b.i);
+    if (!(B.size > 0.01) || B.slanted) return false;
+    if (Math.abs(B.m[5] - A.m[5]) > 0.3 * Math.min(A.size, B.size)) return false;
+    return Math.max(A.size, B.size) / Math.min(A.size, B.size) <= 2.5;
+  };
+  const cand = objs.filter((o) => o.type === OBJ.TEXT && sameLine(o) && sameInk(o.main, seed.main)).sort((a, b) => a.b.l - b.b.l || a.i - b.i);
   const k = cand.indexOf(seed);
   if (k < 0) return [seed];
-  const maxGap = 0.2 * A.size;                        // uno spazio vale circa 0,25-0,3 del corpo: più stretto di così è la stessa parola
+  // Quanto spazio separa due parole? Uno spazio vale circa 0,25-0,3 del corpo, ma nei titoli le lettere
+  // sono distanziate apposta: si guarda allora quanto sono distanti di solito le lettere di questa riga
+  // (la mediana) e si considera "spazio" solo un buco molto più largo del normale.
+  const buchi = [], corpi = cand.map((o) => textMetrics(o).size).sort((a, b) => a - b);
+  for (let j = 1; j < cand.length; j++) { const g = cand[j].b.l - cand[j - 1].b.r; if (g >= 0) buchi.push(g); }
+  buchi.sort((a, b) => a - b);
+  const mediana = buchi.length ? buchi[buchi.length >> 1] : 0;
+  const corpo = corpi[corpi.length >> 1] || A.size;
+  const maxGap = Math.min(0.5 * corpo, Math.max(0.22 * corpo, 2.2 * mediana));
+  // se un pezzo finisce con uno spazio (o il successivo comincia con uno), lì finisce la parola
+  const stacco = (sx, dx) => /\s$/.test(textChars(sx)) || /^\s/.test(textChars(dx));
   const out = [seed];
-  for (let j = k - 1; j >= 0; j--) { if (cand[j + 1].b.l - cand[j].b.r > maxGap) break; out.push(cand[j]); }
-  for (let j = k + 1; j < cand.length; j++) { if (cand[j].b.l - cand[j - 1].b.r > maxGap) break; out.push(cand[j]); }
+  for (let j = k - 1; j >= 0; j--) { if (cand[j + 1].b.l - cand[j].b.r > maxGap || stacco(cand[j], cand[j + 1])) break; out.push(cand[j]); }
+  for (let j = k + 1; j < cand.length; j++) { if (cand[j].b.l - cand[j - 1].b.r > maxGap || stacco(cand[j - 1], cand[j])) break; out.push(cand[j]); }
+  // alone: sulle mappe ogni cifra ha sotto (o sopra) la stessa cifra in bianco, a filo. Va presa anche quella,
+  // altrimenti si sposta il numero e l'alone resta dov'era.
+  const copre = (x, y) => Math.max(0, Math.min(x.b.r, y.b.r) - Math.max(x.b.l, y.b.l)) > 0.6 * Math.min(x.w, y.w) && Math.max(0, Math.min(x.b.t, y.b.t) - Math.max(x.b.b, y.b.b)) > 0.6 * Math.min(x.hh, y.hh);
+  const base = out.slice();
+  for (const o of objs) {
+    if (out.includes(o) || o.type !== OBJ.TEXT || !sameLine(o)) continue;
+    if (base.some((q) => q.w > 0 && q.hh > 0 && copre(o, q))) out.push(o);
+  }
   return out.sort((a, b) => a.i - b.i);
 }
 // ---- Selezione "alla Acrobat": si clicca sul disegno vero (linea, puntino, riempimento), non sul suo rettangolo ----
@@ -544,7 +585,7 @@ async function resampleImage(bytes, kind, targetW) {
 /* ============================================================
    STATO E INTERFACCIA
    ============================================================ */
-const S = { doc: null, page: null, contentDirty: false, pageIndex: 0, pageCount: 0, pw: 0, ph: 0, objs: [], circles: null, controlOf: null, sel: [], mode: 'obj', zoom: 1, view: null, undo: [], fileName: 'documento', drag: null, band: null, lastNudge: 0, dirty: false, lastHit: null, rz: null, pending: null, word: true, box: false };
+const S = { doc: null, page: null, contentDirty: false, tpage: null, pageIndex: 0, pageCount: 0, pw: 0, ph: 0, objs: [], circles: null, controlOf: null, sel: [], mode: 'obj', zoom: 1, view: null, undo: [], fileName: 'documento', drag: null, band: null, lastNudge: 0, dirty: false, lastHit: null, rz: null, pending: null, word: true, box: false };
 const cv = $('cv'), ov = $('ov'), ctx = cv.getContext('2d'), octx = ov.getContext('2d');
 function setStatus(msg, kind) { const s = $('status'); s.textContent = msg || ''; s.className = 'status' + (kind ? ' ' + kind : ''); }
 const nf = (v, d = 1) => v.toFixed(d).replace('.', ',');
@@ -552,7 +593,7 @@ const nf = (v, d = 1) => v.toFixed(d).replace('.', ',');
 async function loadBytes(bytes, pageIndex = 0) {
   await loadEngine();
   const d = E.openDoc(bytes);
-  S.contentDirty = false;
+  S.contentDirty = false; dropTextPage();
   if (S.page) { E.w.FPDF_ClosePage(S.page); S.page = null; }
   if (S.doc) S.doc.close();
   S.doc = d;
@@ -569,6 +610,7 @@ function syncContent() { if (S.contentDirty && S.page) { E.w.FPDFPage_GenerateCo
 function saveDoc() { syncContent(); return E.save(S.doc.doc); }
 function openPage(idx, fit) {
   syncContent();
+  dropTextPage();
   if (S.page) E.w.FPDF_ClosePage(S.page);
   S.pageIndex = idx;
   S.page = E.w.FPDF_LoadPage(S.doc.doc, idx);
@@ -580,6 +622,7 @@ function openPage(idx, fit) {
   if (fit) fitWidth(); else renderView();
 }
 function refreshObjects() {
+  dropTextPage();
   S.objs = readObjects(S.page);
   S.circles = null; S.controlOf = null;
 }
@@ -588,8 +631,9 @@ function touchObjects(list) {
   for (const o of list) {
     const b = E.bounds(o.h) || o.b;
     o.b = b; o.w = b.r - b.l; o.hh = b.t - b.b; o.cx = (b.l + b.r) / 2; o.cy = (b.b + b.t) / 2; o.area = o.w * o.hh;
-    o.geo = null; o.tm = null;
+    o.geo = null; o.tm = null; o.tx = undefined;
   }
+  dropTextPage();
   S.circles = null; S.controlOf = null;
 }
 function ensureCircles() {                               // calcolo pesante: solo quando serve davvero
@@ -1235,14 +1279,19 @@ async function openTextEdit() {
   let infos;
   try { infos = S.sel.map((o) => ({ o, ...E.textInfo(S.page, o.h, tp) })); } finally { if (tp) E.w.FPDFText_ClosePage(tp); }
   if (infos.some((t) => !t.m || Math.abs(t.m[1]) > 0.02 * Math.hypot(t.m[0], t.m[1]) || Math.abs(t.m[2]) > 0.02 * Math.hypot(t.m[2], t.m[3]))) { setStatus('Questo testo è ruotato o inclinato: per ora non si può modificare (si può spostare, ridimensionare o eliminare).', 'err'); return; }
-  const eff = (t) => t.size * Math.hypot(t.m[0], t.m[1]);
+  const eff = (t) => Math.abs(t.size * Math.hypot(t.m[0], t.m[1]));   // il corpo può essere negativo nel PDF: va preso in valore assoluto
   // le lettere e i pezzi di una stessa riga si rimettono insieme; le righe vanno dall'alto al basso
   const righe = [];
   for (const t of infos.slice().sort((a, b) => b.m[5] - a.m[5] || a.m[4] - b.m[4])) {
     const L = righe.find((r) => Math.abs(r.y - t.m[5]) <= 0.25 * Math.max(eff(t), 1));
     if (L) L.items.push(t); else righe.push({ y: t.m[5], items: [t] });
   }
-  righe.forEach((r) => r.items.sort((a, b) => a.m[4] - b.m[4]));
+  // sulle mappe ogni cifra è disegnata due volte (alone bianco sotto): nella casella va mostrata una volta sola
+  righe.forEach((r) => {
+    r.items.sort((a, b) => a.m[4] - b.m[4]);
+    const doppio = (a, b) => a.text === b.text && Math.abs(a.m[4] - b.m[4]) < 0.15 * Math.max(eff(a), 1);
+    r.items = r.items.filter((t) => !r.items.some((q) => q !== t && doppio(q, t) && q.o.i > t.o.i));   // si tiene quella disegnata sopra (il colore giusto, non l'alone)
+  });
   const rigaTesto = (r) => r.items.map((t, k) => {
     if (!k) return t.text;
     const pre = r.items[k - 1], gap = t.o.b.l - pre.o.b.r;              // spazio vero fra due pezzi: lo rimettiamo
@@ -1303,7 +1352,7 @@ $('photoOk').addEventListener('click', async () => {
 
 window.__S = S; window.__test = { syncContent, saveDoc, wordGroup, selectInRect, selectAtPoint, textMetrics, renderRegion, renderDirty, undo, moveSelection, drawOverlay, openTextEdit, applyTextEdit, placePending, placeText, drawTextOnPage, readImage, resizeSelection, handleAt, handlePos, hitAll, hitObject, readObjects, controlGroup, isControlCircle, planPhoto, parseJpeg, mul, EXIF_M, page2dev, dev2page, get E() { return E; } };   // per i collaudi automatici
 </script>
-<script>window.VERSIONE="49";</script>
+<script>window.VERSIONE="50";</script>
 <script src="versione.js"></script>
 </body>
 </html>
