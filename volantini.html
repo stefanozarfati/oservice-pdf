@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Volantini Campi Scuola · PDF Suite</title>
+<meta name="theme-color" content="#F36A01">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--navy:#062A63;--orange:#F36A01;--ink:#283848;--peach:#FBE5D6}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(1200px 600px at 110% -10%, rgba(243,106,1,.06), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(6,42,99,.06), transparent 60%),
+      #f6f8fa;
+    color:var(--ink);min-height:100vh;padding:20px 18px 40px;
+    display:flex;flex-direction:column;align-items:center}
+  .indietro{align-self:flex-start;max-width:720px;width:100%;margin:0 auto 10px;
+    font-size:14px;color:#6b7280;text-decoration:none}
+  .indietro:hover{color:var(--orange)}
+  main{background:#fff;border:1px solid #e9edf2;border-radius:18px;padding:26px 24px;
+    max-width:720px;width:100%;box-shadow:0 6px 20px rgba(20,40,80,.05)}
+  h1{font-size:23px;color:var(--navy);font-weight:800;letter-spacing:.3px;margin-bottom:6px}
+  .sub{color:#6b7280;font-size:15px;line-height:1.45;margin-bottom:18px}
+  .apri{display:inline-block;background:var(--orange);color:#fff;text-decoration:none;
+    font-size:17px;font-weight:700;padding:14px 26px;border-radius:12px;
+    box-shadow:0 6px 16px rgba(243,106,1,.25)}
+  .apri:hover{filter:brightness(1.05)}
+  .nota{background:#f6f8fa;border:1px solid #e9edf2;border-radius:12px;padding:14px 16px;
+    margin-top:20px;font-size:14.5px;line-height:1.5}
+  .nota b{color:var(--navy)}
+  code{background:#fff;border:1px solid #e3e8ee;border-radius:7px;padding:3px 7px;
+    font-size:13.5px;display:inline-block;margin-top:6px}
+  ul{margin:10px 0 0 18px;line-height:1.6;font-size:14.5px}
+  h2{font-size:15px;color:var(--navy);margin:22px 0 6px;letter-spacing:.3px}
+  .solomac{display:inline-block;background:var(--peach);color:#8f4718;border-radius:20px;
+    padding:4px 12px;font-size:12.5px;font-weight:700;margin-bottom:12px}
+</style>
+</head>
+<body>
+<a class="indietro" href="index.html">&larr; Torna alla Suite</a>
+<main>
+  <div class="solomac">Si apre solo sul Mac</div>
+  <h1>Volantini Campi Scuola</h1>
+  <p class="sub">
+    Crea i volantini dei campi scuola e delle giornate multisport a Subiaco
+    (O-Service con Caere Viaggi) partendo dai modelli già pronti: nome della scuola,
+    date, prezzo, alloggio, programma giorno per giorno e foto.
+  </p>
+
+  <a class="apri" href="http://127.0.0.1:8777/" target="_blank" rel="noopener">
+    Apri i Volantini &rarr;
+  </a>
+
+  <div class="nota">
+    <b>Perché non sta dentro la Suite come gli altri strumenti.</b>
+    I Volantini riscrivono i PDF con i font originali dei modelli e salvano da soli
+    nella cartella del cliente: per farlo serve un programma acceso sul Mac, e non
+    può girare dentro il browser come gli altri strumenti.
+  </div>
+
+  <h2>Se il pulsante non apre niente</h2>
+  <ul>
+    <li>Apri la cartella <b>App → oservice-volantini</b> e fai doppio clic su
+        <b>Apri Volantini.command</b>.</li>
+    <li>Oppure, dal Terminale del Mac:
+        <code>cd ~/App/oservice-volantini &amp;&amp; ./venv/bin/python server.py</code></li>
+    <li>Poi torna qui e premi di nuovo il pulsante.</li>
+  </ul>
+</main>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{}));}</script>
+</body>
+</html>

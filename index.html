@@ -39,7 +39,10 @@
   .card.imp .go{color:var(--navy)}
   .stripe{position:absolute;top:0;right:0;width:56px;height:56px;transform:translate(22px,-22px) rotate(45deg)}
   .card.att .stripe{background:rgba(243,106,1,.10)}
-  .card.imp .stripe{background:rgba(6,42,99,.08)} .card.cmp .ic{background:rgba(47,125,79,.12)} .card.cmp .stripe{background:rgba(47,125,79,.10)} .card.cmp .go{color:#2F7D4F}
+  .card.imp .stripe{background:rgba(6,42,99,.08)} .card.vol .ic{background:rgba(243,106,1,.14)}
+  .card.vol .stripe{background:rgba(243,106,1,.12)}
+  .card.vol .go{color:#B45309}
+  .card.cmp .ic{background:rgba(47,125,79,.12)} .card.cmp .stripe{background:rgba(47,125,79,.10)} .card.cmp .go{color:#2F7D4F}
   .card.cls .ic{background:rgba(107,63,160,.12)} .card.cls .stripe{background:rgba(107,63,160,.10)} .card.cls .go{color:#6B3FA0}
   .card.rfo .ic{background:rgba(14,116,144,.12)} .card.rfo .stripe{background:rgba(14,116,144,.10)} .card.rfo .go{color:#0E7490}
   .card.fnt .ic{background:rgba(180,83,9,.12)} .card.fnt .stripe{background:rgba(180,83,9,.10)} .card.fnt .go{color:#B45309}
@@ -127,13 +130,22 @@ footer{margin-top:16px;color:#9aa3af;font-size:12.5px;text-align:center;line-hei
         <p>Seleziona, sposta, ridimensiona ed elimina oggetti; aggiungi e modifica testi e foto, sostituisci foto senza ricomprimerle. Il resto resta intatto.</p>
         <div class="go">Apri &rarr;</div>
       </a>
+      <a class="card vol" href="volantini.html">
+        <div class="stripe"></div>
+        <div class="ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#F36A01" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15a0 0 0 0 1 0 0H5a0 0 0 0 1 0 0z"/><path d="M16 3v3h3"/><path d="M8 10h8M8 14h8M8 18h5"/></svg>
+        </div>
+        <h2>Volantini Campi Scuola</h2>
+        <p>I volantini dei campi scuola di Subiaco: scuola, date, prezzo, alloggio, programma giorno per giorno e foto. Si apre sul Mac.</p>
+        <div class="go">Apri &rarr;</div>
+      </a>
 </div>
 
 <button id="installBtn" class="install-btn" hidden>📲 Installa l'app</button>
 <div id="iosHint" class="ios-hint" hidden>Su iPhone/iPad: tocca <b>Condividi</b> e poi <b>«Aggiungi a Home»</b> per installare l'app.</div>
 <footer>
   <b>oservice.it</b> · Stefano Zarfati · Formatore Federale FISO<br>
-  Versione 50 · App offline installabile · funziona senza internet dopo la prima apertura
+  Versione 51 · App offline installabile · funziona senza internet dopo la prima apertura
 </footer>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{}));}
 let deferredPrompt=null;
