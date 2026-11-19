@@ -47,6 +47,11 @@
   .card.rfo .ic{background:rgba(14,116,144,.12)} .card.rfo .stripe{background:rgba(14,116,144,.10)} .card.rfo .go{color:#0E7490}
   .card.fnt .ic{background:rgba(180,83,9,.12)} .card.fnt .stripe{background:rgba(180,83,9,.10)} .card.fnt .go{color:#B45309}
   .card.mod .ic{background:rgba(190,24,93,.12)} .card.mod .stripe{background:rgba(190,24,93,.10)} .card.mod .go{color:#BE185D}
+  .card.mdl .ic{background:rgba(67,56,202,.12)} .card.mdl .stripe{background:rgba(67,56,202,.10)} .card.mdl .go{color:#4338CA}
+  #card-moduli[hidden]{display:none}
+  .nota-mac{margin-top:14px;font-size:13px;color:#6b7280;background:#fff;border:1px solid #e9edf2;
+            border-radius:10px;padding:10px 14px;max-width:460px;text-align:center;line-height:1.5}
+  .nota-mac[hidden]{display:none} .nota-mac b{color:var(--navy)}
   .install-btn{margin-top:28px;background:var(--orange);color:#fff;border:0;padding:13px 24px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 8px 22px rgba(243,106,1,.32)}.install-btn:hover{filter:brightness(1.05)}.ios-hint{margin-top:24px;font-size:13.5px;color:#6b7280;background:#fff;border:1px solid #e9edf2;border-radius:10px;padding:11px 16px;max-width:440px;text-align:center;line-height:1.5}.ios-hint b{color:var(--navy)}
 footer{margin-top:16px;color:#9aa3af;font-size:12.5px;text-align:center;line-height:1.6}
   footer b{color:#6b7280}
@@ -139,13 +144,28 @@ footer{margin-top:16px;color:#9aa3af;font-size:12.5px;text-align:center;line-hei
         <p>I volantini dei campi scuola di Subiaco: scuola, date, prezzo, alloggio, programma giorno per giorno e foto. Si apre sul Mac.</p>
         <div class="go">Apri &rarr;</div>
       </a>
+      <a class="card mdl" id="card-moduli" href="oservicemoduli://apri" hidden>
+        <div class="stripe"></div>
+        <div class="ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#4338CA" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h3"/></svg>
+        </div>
+        <h2>Moduli</h2>
+        <p>I moduli delle scuole e delle aziende compilati da soli: si trascinano i file dentro e lei scrive dati, tabelle e firma. Si apre sul Mac.</p>
+        <div class="go">Apri sul Mac &rarr;</div>
+      </a>
+</div>
+
+<div id="nota-moduli" class="nota-mac" hidden>
+  Non si &egrave; aperto niente? Allora l'app non c'&egrave; su questo Mac:
+  apri la cartella <b>App &rsaquo; oservice-moduli</b> e fai doppio clic su
+  <b>&laquo;Apri OService Moduli&raquo;</b>.
 </div>
 
 <button id="installBtn" class="install-btn" hidden>📲 Installa l'app</button>
 <div id="iosHint" class="ios-hint" hidden>Su iPhone/iPad: tocca <b>Condividi</b> e poi <b>«Aggiungi a Home»</b> per installare l'app.</div>
 <footer>
   <b>oservice.it</b> · Stefano Zarfati · Formatore Federale FISO<br>
-  Versione 51 · App offline installabile · funziona senza internet dopo la prima apertura
+  Versione 52 · App offline installabile · funziona senza internet dopo la prima apertura
 </footer>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{}));}
 let deferredPrompt=null;
@@ -155,8 +175,14 @@ window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();deferredP
 installBtn.addEventListener('click',async()=>{if(!deferredPrompt)return;installBtn.hidden=true;deferredPrompt.prompt();try{await deferredPrompt.userChoice;}catch(_){}deferredPrompt=null;});
 window.addEventListener('appinstalled',()=>{installBtn.hidden=true;deferredPrompt=null;});
 if(/iphone|ipad|ipod/i.test(navigator.userAgent)&&!isStandalone){iosHint.hidden=false;}
+// La scheda "Moduli" apre un'app che sta sul Mac di Stefano: sul telefono
+// non servirebbe a niente, quindi si mostra solo su macOS. (Un iPad che si
+// spaccia per Mac si riconosce dal fatto che ha il tocco.)
+const cardMod=document.getElementById('card-moduli'),notaMod=document.getElementById('nota-moduli');
+if(/Macintosh|Mac OS X/.test(navigator.userAgent)&&(navigator.maxTouchPoints||0)<2){cardMod.hidden=false;}
+cardMod.addEventListener('click',()=>{setTimeout(()=>{notaMod.hidden=false;},1600);});
 </script>
-<script>window.VERSIONE="50";</script>
+<script>window.VERSIONE="52";</script>
 <script src="versione.js"></script>
 </body>
 </html>
