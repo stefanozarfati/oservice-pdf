@@ -48,6 +48,7 @@
   .card.fnt .ic{background:rgba(180,83,9,.12)} .card.fnt .stripe{background:rgba(180,83,9,.10)} .card.fnt .go{color:#B45309}
   .card.mod .ic{background:rgba(190,24,93,.12)} .card.mod .stripe{background:rgba(190,24,93,.10)} .card.mod .go{color:#BE185D}
   .card.mdl .ic{background:rgba(67,56,202,.12)} .card.mdl .stripe{background:rgba(67,56,202,.10)} .card.mdl .go{color:#4338CA}
+  .card.stp .ic{background:rgba(185,28,28,.12)} .card.stp .stripe{background:rgba(185,28,28,.10)} .card.stp .go{color:#B91C1C}
   #card-moduli[hidden]{display:none}
   .nota-mac{margin-top:14px;font-size:13px;color:#6b7280;background:#fff;border:1px solid #e9edf2;
             border-radius:10px;padding:10px 14px;max-width:460px;text-align:center;line-height:1.5}
@@ -144,6 +145,15 @@ footer{margin-top:16px;color:#9aa3af;font-size:12.5px;text-align:center;line-hei
         <p>I volantini dei campi scuola di Subiaco: scuola, date, prezzo, alloggio, programma giorno per giorno e foto. Si apre sul Mac.</p>
         <div class="go">Apri &rarr;</div>
       </a>
+      <a class="card stp" href="correggi-stampa.html">
+        <div class="stripe"></div>
+        <div class="ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#B91C1C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 9V3h10v6"/><path d="M6 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-1"/><path d="M7 15h10v6H7z"/><path d="M9.5 18l1.6 1.6L14.5 16"/></svg>
+        </div>
+        <h2>Correggi stampa</h2>
+        <p>I PDF di Purple Pen che in stampa perdono legenda e loghi: si trascinano qui e tornano completi. Gli originali restano intatti.</p>
+        <div class="go">Apri &rarr;</div>
+      </a>
       <a class="card mdl" id="card-moduli" href="oservicemoduli://apri" hidden>
         <div class="stripe"></div>
         <div class="ic">
@@ -165,7 +175,7 @@ footer{margin-top:16px;color:#9aa3af;font-size:12.5px;text-align:center;line-hei
 <div id="iosHint" class="ios-hint" hidden>Su iPhone/iPad: tocca <b>Condividi</b> e poi <b>«Aggiungi a Home»</b> per installare l'app.</div>
 <footer>
   <b>oservice.it</b> · Stefano Zarfati · Formatore Federale FISO<br>
-  Versione 52 · App offline installabile · funziona senza internet dopo la prima apertura
+  Versione 53 · App offline installabile · funziona senza internet dopo la prima apertura
 </footer>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{}));}
 let deferredPrompt=null;
@@ -182,7 +192,7 @@ const cardMod=document.getElementById('card-moduli'),notaMod=document.getElement
 if(/Macintosh|Mac OS X/.test(navigator.userAgent)&&(navigator.maxTouchPoints||0)<2){cardMod.hidden=false;}
 cardMod.addEventListener('click',()=>{setTimeout(()=>{notaMod.hidden=false;},1600);});
 </script>
-<script>window.VERSIONE="52";</script>
+<script>window.VERSIONE="53";</script>
 <script src="versione.js"></script>
 </body>
 </html>

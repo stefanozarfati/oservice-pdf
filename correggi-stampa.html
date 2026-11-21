@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Correggi stampa · OService PDF Suite</title>
+<style>
+:root{--navy:#062A63;--red:#B91C1C;--bg:#f4f5f7;--line:#e2e5ea;--ink:#1f2733;--muted:#6b7280;--ok:#2F7D4F;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}html,body{margin:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
+header{background:var(--navy);color:#fff;padding:10px 20px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:200;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.homelink{color:#fff;text-decoration:none;font-weight:600;font-size:13px;background:rgba(255,255,255,.18);padding:6px 12px;border-radius:8px}
+.logo{height:40px;width:40px;object-fit:contain;display:block}
+header h1{font-size:19px;font-weight:700;margin:0}
+.wrap{max-width:760px;margin:24px auto;padding:0 16px}
+.intro{color:var(--muted);font-size:14.5px;margin:0 0 18px}.intro b{color:var(--ink)}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+.card h2{margin:0 0 8px;font-size:16px;color:var(--navy)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{border:1.5px solid var(--line);background:#fff;border-radius:9px;padding:9px 14px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--ink)}
+.btn:hover:not(:disabled){border-color:#c3ccd8}.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.primary{background:var(--red);border-color:var(--red);color:#fff}
+.btn.small{padding:6px 11px;font-size:13px}
+.note{font-size:12.5px;color:var(--muted);margin-top:8px}
+.status{font-family:var(--mono);font-size:12.5px;color:var(--muted);min-height:20px;margin-top:10px;white-space:pre-wrap}
+.status.err{color:#c0392b}.status.ok{color:var(--ok)}
+.drop{border:2px dashed #cbd3dd;border-radius:14px;padding:30px 18px;text-align:center;color:var(--muted);font-size:14.5px;background:#fbfcfd;cursor:pointer}
+.drop b{color:var(--ink)}
+.drop.over{border-color:var(--red);background:#fdf3f3;color:var(--ink)}
+.res{display:flex;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--line);font-size:14px}
+.res:first-child{border-top:0}
+.res .nome{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.res .esito{width:168px;flex:none;font-size:12.5px;color:var(--muted)}
+.res.corretto .esito{color:var(--ok);font-weight:600}
+.res.gia .esito{color:var(--muted)}
+.res.ko .esito{color:#c0392b;font-weight:600}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+@media(max-width:620px){.res{flex-wrap:wrap}.res .esito{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" class="homelink">&larr; Home</a>
+  <img class="logo" alt="OService" src="icon-192.png">
+  <h1>Correggi stampa</h1>
+</header>
+<div class="wrap">
+  <p class="intro">Alcuni PDF di <b>Purple Pen</b> perdono pezzi in stampa: legenda, loghi e altre immagini su sfondo pieno spariscono dal foglio, senza nessun messaggio di errore. Non e' colpa della stampante: e' il Mac che perde quelle immagini mentre converte il PDF. Qui si rimette a posto. <b>Tutto resta sul tuo dispositivo</b>, niente viene caricato su internet.</p>
+
+  <div class="card">
+    <h2>Trascina qui i PDF</h2>
+    <div class="drop" id="drop">
+      <b>Trascina i PDF appena usciti da Purple Pen</b><br>
+      anche tutti insieme &mdash; oppure clicca per sceglierli
+      <input type="file" id="fileIn" accept="application/pdf,.pdf" multiple hidden>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card" id="cardRes" hidden>
+    <h2>Risultato</h2>
+    <div id="list"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn primary" id="btnAll">Scarica tutti i corretti</button>
+      <button class="btn" id="btnClear">Svuota</button>
+    </div>
+    <div class="note">I file corretti si chiamano come gli originali con <b>CORRETTO</b> alla fine. Gli originali non vengono toccati. Se il browser chiede il permesso di scaricare piu' file, rispondi di si'.</div>
+  </div>
+
+  <div class="card">
+    <h2>Come evitare il problema alla radice</h2>
+    <div class="note">In Purple Pen, nelle impostazioni dell'evento, c'e' la <b>simulazione della sovrastampa</b> (overprint). Quando e' accesa nascono i PDF che perdono le immagini. Se la spegni e riesporti, i PDF escono gia' a posto e questa pagina non ti serve. Tieni presente che la sovrastampa spenta cambia leggermente i colori sovrapposti sulla mappa: se la vuoi accesa, usa questa pagina a ogni esportazione.</div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const setStatus = (m, k) => { const s = $('status'); s.textContent = m || ''; s.className = 'status' + (k ? ' ' + k : ''); };
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// Il guasto: la pagina del PDF dichiara un gruppo di trasparenza in CMYK.
+// Con quello dentro, il convertitore del Mac butta via le immagini che non
+// hanno un contorno ritagliato. Si cancella la dichiarazione scrivendoci
+// sopra degli spazi: stessa lunghezza, quindi tutti i riferimenti interni
+// del PDF (la tabella xref) restano validi e il file non va ricostruito.
+const PAT = /\/Group\s*<<[^<>]{0,200}?\/S\s*\/Transparency[^<>]{0,200}?>>/g;
+
+function aStringa(u8) {
+  let s = '', CH = 0x8000;
+  for (let i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+  return s;
+}
+
+function correggi(u8) {
+  const s = aStringa(u8);
+  let n = 0, indiretti = 0;
+  PAT.lastIndex = 0;
+  let m;
+  while ((m = PAT.exec(s)) !== null) {
+    if (m[0].indexOf('DeviceCMYK') < 0) continue;
+    for (let i = m.index; i < m.index + m[0].length; i++) u8[i] = 32;
+    n++;
+  }
+  if (!n && /\/Group\s+\d+\s+0\s+R/.test(s)) indiretti = 1;
+  return { n, indiretti };
+}
+
+const esiti = [];
+
+function nomeCorretto(nome) {
+  const i = nome.toLowerCase().lastIndexOf('.pdf');
+  return (i > 0 ? nome.slice(0, i) : nome) + ' CORRETTO.pdf';
+}
+
+function scarica(e) {
+  const url = URL.createObjectURL(e.blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = e.nuovo;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+function disegna() {
+  $('cardRes').hidden = esiti.length === 0;
+  const el = $('list');
+  el.innerHTML = '';
+  for (const e of esiti) {
+    const d = document.createElement('div');
+    d.className = 'res ' + e.classe;
+    d.innerHTML = '<div class="nome">' + esc(e.nome) + '</div><div class="esito">' + esc(e.testo) + '</div>';
+    if (e.blob) {
+      const b = document.createElement('button');
+      b.className = 'btn small'; b.textContent = 'Scarica';
+      b.onclick = () => scarica(e);
+      d.appendChild(b);
+    }
+    el.appendChild(d);
+  }
+  $('btnAll').disabled = !esiti.some((e) => e.blob);
+}
+
+async function elabora(files) {
+  const pdf = [...files].filter((f) => /\.pdf$/i.test(f.name));
+  if (!pdf.length) { setStatus('Trascina dei file PDF.', 'err'); return; }
+  let ok = 0, gia = 0, ko = 0, k = 0;
+  for (const f of pdf) {
+    setStatus('Controllo… ' + (++k) + ' di ' + pdf.length);
+    try {
+      const u8 = new Uint8Array(await f.arrayBuffer());
+      const r = correggi(u8);
+      if (r.n) {
+        esiti.push({ nome: f.name, nuovo: nomeCorretto(f.name), classe: 'corretto',
+                     testo: 'corretto', blob: new Blob([u8], { type: 'application/pdf' }) });
+        ok++;
+      } else if (r.indiretti) {
+        esiti.push({ nome: f.name, classe: 'ko', testo: 'non riconosciuto', blob: null });
+        ko++;
+      } else {
+        esiti.push({ nome: f.name, classe: 'gia', testo: 'gia’ a posto', blob: null });
+        gia++;
+      }
+    } catch (err) {
+      esiti.push({ nome: f.name, classe: 'ko', testo: 'errore: ' + err.message, blob: null });
+      ko++;
+    }
+  }
+  disegna();
+  const p = [];
+  if (ok) p.push(ok + (ok === 1 ? ' file corretto' : ' file corretti'));
+  if (gia) p.push(gia + (gia === 1 ? ' era gia’ a posto' : ' erano gia’ a posto'));
+  if (ko) p.push(ko + (ko === 1 ? ' non riuscito' : ' non riusciti'));
+  setStatus(p.join(', ') + '.', ko && !ok ? 'err' : 'ok');
+}
+
+const drop = $('drop');
+drop.onclick = () => $('fileIn').click();
+$('fileIn').onchange = () => { const f = [...$('fileIn').files]; $('fileIn').value = ''; if (f.length) elabora(f); };
+['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files.length) elabora(e.dataTransfer.files); });
+
+$('btnAll').onclick = async () => {
+  for (const e of esiti) { if (e.blob) { scarica(e); await new Promise((r) => setTimeout(r, 350)); } }
+};
+$('btnClear').onclick = () => { esiti.length = 0; disegna(); setStatus(''); };
+
+window.__test = { correggi, elabora, esiti, nomeCorretto };
+disegna();
+</script>
+<script>window.VERSIONE="53";</script>
+<script src="versione.js"></script>
+</body>
+</html>

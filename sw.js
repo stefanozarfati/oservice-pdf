@@ -1,9 +1,9 @@
 // La versione e' la stessa che si legge in Home ("Versione NN"): un numero
 // solo, usato per il nome della cache e per l'aggiornamento automatico.
-const VERSIONE='52';
+const VERSIONE='53';
 const CACHE='oservice-suite-v'+VERSIONE;
 const ASSETS=[
-  './','./index.html','./attestati.html','./impaginatore.html','./comprimi.html','./classifiche.html','./retro-foto-orienteering.html','./modifica-pdf.html','./font.html','./volantini.html','./manifest.json',
+  './','./index.html','./attestati.html','./impaginatore.html','./comprimi.html','./classifiche.html','./retro-foto-orienteering.html','./modifica-pdf.html','./font.html','./volantini.html','./correggi-stampa.html','./manifest.json',
   './gs/gs.js',  // gs.wasm (~15MB) NON in precache: cache-first al primo uso
   './lib/pdfium/pdfium.js',  // pdfium.wasm (~4,6MB) NON in precache: cache-first al primo uso (come gs.wasm)
   './versione.js','./lib/pdf-lib-bundle.js','./lib/fontkit.js','./lib/font-manager.js',
