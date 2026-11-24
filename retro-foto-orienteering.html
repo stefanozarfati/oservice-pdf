@@ -45,7 +45,7 @@ textarea{min-height:56px;resize:vertical;line-height:1.35}
   border-radius:8px;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.35;
   white-space:pre-wrap;outline:none}
 .editable:focus{border-color:var(--teal)}
-#htext,#ftext{text-align:center}
+#htext,#ftext{text-align:center;font-family:'PT Serif',Georgia,serif}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .fmtBtn{padding:8px 0;border:1px solid var(--line);border-radius:8px;background:var(--card);
   color:var(--ink);cursor:pointer;font-size:14px}
@@ -59,7 +59,7 @@ textarea{min-height:56px;resize:vertical;line-height:1.35}
   overflow:auto;min-height:400px;padding-top:4px}
 .page{position:relative;background:#fff;box-shadow:0 6px 24px rgba(0,0,0,.18);flex-shrink:0}
 .htext,.ftext{position:absolute;left:0;right:0;text-align:center;white-space:pre-wrap;
-  color:#111;font-family:Georgia,serif}
+  color:#111;font-family:'PT Serif',Georgia,serif}
 .grid-area{position:absolute;display:flex;flex-wrap:wrap;justify-content:center;
   align-content:flex-start}
 .logoLayer{position:absolute;inset:0;pointer-events:none}
@@ -1020,6 +1020,9 @@ async function exportPDF(){
     const marginPt = MARGIN_MM*MM_PT;
     const maxWidthPt = (w - 2*MARGIN_MM)*MM_PT;
 
+    // aspetto che i font veri siano caricati: altrimenti il browser impagina l'anteprima
+    // con un font di riserva e le righe non coinciderebbero con quelle del PDF
+    try{ await document.fonts.ready; }catch(_){}
     recompute(); // anteprima aggiornata: da lì si leggono posizioni e altezze dei testi
     const hasHeader = !!htextEl.textContent.trim(), hasFooter = !!ftextEl.textContent.trim();
     const headerLay = hasHeader ? await layoutFromPreview(headerText, doc, fonts, warnings) : {lines:[]};
@@ -1307,7 +1310,9 @@ function recompute(){
       labelrow.className = 'labelrow';
       labelrow.style.height = labelHpx + 'px';
       labelrow.style.fontSize = labelFont + 'px';
-      if(labelFontFamily) labelrow.style.fontFamily = labelFontFamily;
+      // senza un font scelto, a schermo uso Helvetica: e' lo stesso che il PDF
+      // incorpora di suo (HelveticaBold), cosi' anteprima ed esportazione coincidono
+      labelrow.style.fontFamily = labelFontFamily || 'Helvetica, Arial, sans-serif';
 
       const lbl = document.createElement('div');
       lbl.className = 'lbl';
@@ -1487,7 +1492,7 @@ renderLogoLibrary();
 refreshProjectList();
 </script>
 
-<script>window.VERSIONE="53";</script>
+<script>window.VERSIONE="54";</script>
 <script src="versione.js"></script>
 </body>
 </html>
