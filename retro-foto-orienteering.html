@@ -375,6 +375,67 @@ async function fileToImageDataUrl(file){
   });
 }
 
+// I telefoni fanno foto da 4000x3000 punti (12 milioni di punti, 2-4 MB l'una). Tenerle
+// a quella misura non serve: in un foglio da 18 riquadri ogni foto viene stampata larga
+// 5 cm. Pero' costa carissimo — memoria, tempo di salvataggio, e ogni ridisegno
+// dell'anteprima deve decodificarle tutte da capo. Qui si rimpiccioliscono una volta
+// sola, appena entrano.
+// 2400 punti di lato bastano per stampare una foto larga 20 cm a 300 dpi (la qualita'
+// predefinita) oppure 10 cm a 600 dpi: molto piu' di quanto serva a questi fogli.
+// Le foto piu' piccole di cosi' non vengono toccate: non si ingrandisce mai niente.
+const MAX_LATO_FOTO = 2400;
+function rimpicciolisciFoto(dataUrl){
+  return new Promise(resolve=>{
+    if(typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')){ resolve(dataUrl); return; }
+    const img = new Image();
+    img.onload = ()=>{
+      const lato = Math.max(img.naturalWidth, img.naturalHeight);
+      if(!lato || lato <= MAX_LATO_FOTO){ resolve(dataUrl); return; }
+      const k = MAX_LATO_FOTO/lato;
+      const c = document.createElement('canvas');
+      c.width  = Math.max(1, Math.round(img.naturalWidth*k));
+      c.height = Math.max(1, Math.round(img.naturalHeight*k));
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      let fuori = null;
+      try{ fuori = c.toDataURL('image/jpeg', 0.92); }catch(e){ fuori = null; }
+      c.width = c.height = 1; // libera subito la memoria della tela
+      // se per qualche motivo venisse piu' pesante dell'originale, si tiene l'originale
+      resolve(fuori && fuori.length < dataUrl.length ? fuori : dataUrl);
+    };
+    img.onerror = ()=> resolve(dataUrl); // non si riesce a rileggerla: si tiene com'e'
+    img.src = dataUrl;
+  });
+}
+
+// Il browser decodifica un'immagine una volta sola per indirizzo, ma se non resta niente
+// che la tenga viva butta via il risultato e al ridisegno dopo ricomincia da capo. Qui si
+// tiene da parte un Image per ogni foto: anteprima ed esportazione riusano la stessa
+// decodifica invece di rifarla per ogni riquadro ogni volta.
+const cacheImmagini = new Map();
+function immagineDecodificata(src){
+  let voce = cacheImmagini.get(src);
+  if(voce) return voce;
+  voce = new Promise((resolve,reject)=>{
+    const img = new Image();
+    if(!src.startsWith('data:')) img.crossOrigin = 'anonymous';
+    img.onload = ()=> resolve(img);
+    img.onerror = ()=>{ cacheImmagini.delete(src); reject(new Error('immagine non raggiungibile')); };
+    img.src = src;
+  });
+  cacheImmagini.set(src, voce);
+  return voce;
+}
+// Le foto sostituite o tolte non devono restare in memoria per sempre
+function scordaImmaginiNonUsate(){
+  const vive = new Set();
+  Object.keys(photoData).forEach(k=>{ if(photoData[k] && photoData[k].src) vive.add(photoData[k].src); });
+  logos.forEach(l=>{ if(l.imgSrc) vive.add(l.imgSrc); });
+  cacheImmagini.forEach((v,k)=>{ if(!vive.has(k)) cacheImmagini.delete(k); });
+}
+
 let pendingPhotoIndex = null;
 const photoFileInput = $('photoFileInput');
 
@@ -388,6 +449,7 @@ photoFileInput.addEventListener('change', ()=>{
   if(!file || pendingPhotoIndex==null) return;
   const idx = pendingPhotoIndex;
   fileToImageDataUrl(file)
+    .then(rimpicciolisciFoto)
     .then(dataUrl => { photoData[idx] = {src:dataUrl, zoom:null, fx:0, fy:0}; recompute(); })
     .catch(()=> alert('Non riesco a leggere questa immagine.'));
 });
@@ -433,7 +495,7 @@ function applyStyleToSelection(prop, value){
 }
 
 [htextEl, ftextEl].forEach(el=>{
-  el.addEventListener('input', recompute);
+  el.addEventListener('input', recomputeSoon);
 });
 $('fontSel').addEventListener('change', async ()=>{
   const value = $('fontSel').value;
@@ -494,9 +556,9 @@ function syncSpacingUI(){
   $('lhFooterReadout').textContent = footerLH.toFixed(2).replace('.',',');
   $('txtGapReadout').textContent = String(TXT_GAP_MM).replace('.',',') + ' mm';
 }
-$('lhHeaderSlider').addEventListener('input', e=>{ headerLH = +e.target.value; syncSpacingUI(); recompute(); });
-$('lhFooterSlider').addEventListener('input', e=>{ footerLH = +e.target.value; syncSpacingUI(); recompute(); });
-$('txtGapSlider').addEventListener('input', e=>{ TXT_GAP_MM = +e.target.value; syncSpacingUI(); recompute(); });
+$('lhHeaderSlider').addEventListener('input', e=>{ headerLH = +e.target.value; syncSpacingUI(); recomputeSoon(); });
+$('lhFooterSlider').addEventListener('input', e=>{ footerLH = +e.target.value; syncSpacingUI(); recomputeSoon(); });
+$('txtGapSlider').addEventListener('input', e=>{ TXT_GAP_MM = +e.target.value; syncSpacingUI(); recomputeSoon(); });
 
 // ---- Salvataggio nel browser (IndexedDB): progetti e libreria loghi ----
 const DB_NAME = 'retrofoto_orienteering', DB_VERSION = 1;
@@ -535,6 +597,17 @@ function dbGetAll(store){
   return getDB().then(db=> new Promise((res,rej)=>{
     const tx = db.transaction(store,'readonly');
     const req = tx.objectStore(store).getAll();
+    req.onsuccess = ()=>res(req.result);
+    req.onerror = ()=>rej(req.error);
+  }));
+}
+// Solo i NOMI dei progetti salvati, senza tirare su dal disco anche tutte le foto che
+// contengono. Serve all'elenco "Apri...", che dei progetti mostra appunto il nome:
+// con dbGetAll leggeva decine di MB ogni volta, ed erano i secondi di attesa.
+function dbGetAllKeys(store){
+  return getDB().then(db=> new Promise((res,rej)=>{
+    const tx = db.transaction(store,'readonly');
+    const req = tx.objectStore(store).getAllKeys();
     req.onsuccess = ()=>res(req.result);
     req.onerror = ()=>rej(req.error);
   }));
@@ -622,14 +695,33 @@ function applyProjectData(data){
   logos = (data.logos || []).map(l=>({...l}));
   logoSeq = logos.reduce((m,l)=>Math.max(m, l.id||0), 0);
   recompute();
+  rimpicciolisciFotoDelProgetto();
+}
+// Un progetto salvato prima di questa versione (o importato da un file) ha dentro le foto
+// a grandezza piena: appena si apre, si alleggeriscono in memoria come si fa all'ingresso.
+// Il ritaglio non si sposta: zoom e spostamento sono memorizzati in proporzione, non in
+// punti, quindi rimpicciolire la foto non cambia l'inquadratura.
+// Il progetto salvato sul disco non cambia da solo: diventa leggero al salvataggio dopo.
+async function rimpicciolisciFotoDelProgetto(){
+  let cambiate = 0;
+  for(const k of Object.keys(photoData)){
+    const pd = photoData[k];
+    if(!pd || !pd.src) continue;
+    const nuova = await rimpicciolisciFoto(pd.src);
+    if(nuova !== pd.src && photoData[k] === pd){   // se nel frattempo si e' aperto un altro progetto, si lascia perdere
+      pd.src = nuova; pd.natW = null; pd.natH = null; cambiate++;
+    }
+  }
+  if(cambiate) recompute();
 }
 function refreshProjectList(){
-  dbGetAll('projects').then(list=>{
+  // la chiave dell'archivio e' il nome del progetto (keyPath:'name'): per l'elenco basta quella
+  dbGetAllKeys('projects').then(nomi=>{
     const sel = $('openProjectSel');
     sel.innerHTML = '<option value="">📂 Apri…</option>';
-    list.sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
+    nomi.map(String).sort((a,b)=>a.localeCompare(b)).forEach(nome=>{
       const opt = document.createElement('option');
-      opt.value = p.name; opt.textContent = p.name;
+      opt.value = nome; opt.textContent = nome;
       sel.appendChild(opt);
     });
   });
@@ -678,14 +770,24 @@ $('importProjectInput').addEventListener('change', ()=>{
 
 // ================== ESPORTAZIONE PDF ==================
 
-// Legge un'immagine (file locale o link internet) come oggetto Image pronto da disegnare
+// Legge un'immagine (file locale o link internet) come oggetto Image pronto da disegnare.
+// Passa dalla memoria delle immagini gia' decodificate (vedi immagineDecodificata): le foto
+// da esportare sono le stesse che l'anteprima ha appena caricato, inutile rifare il lavoro.
 function loadImageEl(src){
+  return immagineDecodificata(src);
+}
+// Dalla tela ai byte del file senza passare per il testo base64: il giro
+// dataURL -> atob -> Uint8Array copiava ogni foto tre volte, a ogni esportazione.
+function telaInByte(canvas, tipo, qualita){
   return new Promise((resolve,reject)=>{
-    const img = new Image();
-    if(!src.startsWith('data:')) img.crossOrigin = 'anonymous';
-    img.onload = ()=>resolve(img);
-    img.onerror = ()=>reject(new Error('immagine non raggiungibile'));
-    img.src = src;
+    if(canvas.toBlob){
+      canvas.toBlob(b=>{
+        if(!b){ reject(new Error('tela non convertibile')); return; }
+        b.arrayBuffer().then(ab=> resolve(new Uint8Array(ab)), reject);
+      }, tipo, qualita);
+    } else {
+      try{ resolve(dataUrlToBytes(canvas.toDataURL(tipo, qualita))); }catch(e){ reject(e); }
+    }
   });
 }
 function dataUrlToBytes(dataUrl){
@@ -708,7 +810,9 @@ async function prepareImageForExport(pd, boxWmm, boxHmm, dpi){
   canvas.width = wpx; canvas.height = hpx;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, place.left, place.top, place.width, place.height);
-  return canvas.toDataURL('image/jpeg', 0.85);
+  const byte = await telaInByte(canvas, 'image/jpeg', 0.85);
+  canvas.width = canvas.height = 1; // libera la memoria della tela appena finito
+  return byte;
 }
 // Stessa cosa per un logo, ma "contieni tutto" invece di ritagliare (come nell'anteprima)
 async function prepareLogoForExport(lg, dpi){
@@ -721,7 +825,9 @@ async function prepareLogoForExport(lg, dpi){
   canvas.width = wpx; canvas.height = hpx;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, (wpx-dw)/2, (hpx-dh)/2, dw, dh);
-  return canvas.toDataURL('image/png');
+  const byte = await telaInByte(canvas, 'image/png');
+  canvas.width = canvas.height = 1; // libera la memoria della tela appena finito
+  return byte;
 }
 
 // Sceglie il font PDF standard più vicino al font scelto (i font decorativi non disponibili
@@ -1067,8 +1173,7 @@ async function exportPDF(){
         const pd = photoData[i];
         if(pd){
           try{
-            const dataUrl = await prepareImageForExport(pd, g.cellW, photoHmm, dpi);
-            const embedded = await doc.embedJpg(dataUrlToBytes(dataUrl));
+            const embedded = await doc.embedJpg(await prepareImageForExport(pd, g.cellW, photoHmm, dpi));
             page.drawImage(embedded, {
               x: cellXmm*MM_PT, y: PH-(cellYmm+photoHmm)*MM_PT,
               width: g.cellW*MM_PT, height: photoHmm*MM_PT});
@@ -1104,8 +1209,7 @@ async function exportPDF(){
     for(const lg of logos){
       if(!lg.imgSrc) continue;
       try{
-        const dataUrl = await prepareLogoForExport(lg, dpi);
-        const embedded = await doc.embedPng(dataUrlToBytes(dataUrl));
+        const embedded = await doc.embedPng(await prepareLogoForExport(lg, dpi));
         page.drawImage(embedded, {x: lg.xmm*MM_PT, y: PH-(lg.ymm+lg.hmm)*MM_PT, width: lg.wmm*MM_PT, height: lg.hmm*MM_PT});
       }catch(e){
         warnings.push('Un logo non è stato incluso (file non leggibile).');
@@ -1155,6 +1259,19 @@ async function exportPDF(){
   }
 }
 $('exportPdfBtn').addEventListener('click', exportPDF);
+
+// Un ridisegno per fotogramma, non uno per tasto premuto.
+// Trascinando un cursore, o scrivendo nel testo, arrivano decine di eventi al secondo:
+// prima ognuno rifaceva la griglia da zero (18 riquadri, 18 foto da ridisegnare) e il
+// browser restava indietro — erano gli "scatti". Qui gli eventi ravvicinati si fondono
+// in un solo ridisegno.
+// ATTENZIONE: chi deve leggere SUBITO posizioni e altezze dall'anteprima (l'esportazione
+// in PDF) deve continuare a chiamare recompute() diretto, non questa.
+let ridisegnoInCoda = 0;
+function recomputeSoon(){
+  if(ridisegnoInCoda) return;
+  ridisegnoInCoda = requestAnimationFrame(()=>{ ridisegnoInCoda = 0; recompute(); });
+}
 
 function recompute(){
   let [w,h] = FORMATS[$('pformat').value];
@@ -1256,6 +1373,7 @@ function recompute(){
           }
           layoutImg();
         };
+        immagineDecodificata(pd.src).catch(()=>{}); // tiene viva la decodifica fra un ridisegno e l'altro
         img.src = pd.src;
 
         // trascina per spostare l'inquadratura (memorizzato come % della cella, non in pixel:
@@ -1342,6 +1460,7 @@ function recompute(){
     info.textContent = 'Non resta spazio per la griglia: riduci il testo o scegli un formato più grande.';
   }
   renderLogos();
+  scordaImmaginiNonUsate();
 }
 
 // ---- Loghi liberi: si aggiungono, si trascinano, si ridimensionano ----
@@ -1478,9 +1597,12 @@ function renderLogos(){
 
 $('addLogoBtn').addEventListener('click', addLogo);
 
-['pname','pformat','porient','ncount','labelScheme','labelFontSel','labelSizeSlider'].forEach(id=>{
-  $(id).addEventListener('input', recompute);
-  $(id).addEventListener('change', recompute);
+// 'pname' (Nome progetto) NON e' in questo elenco di proposito: non compare
+// nell'anteprima, serve solo per salvare e per il nome del PDF. Prima stava qui, e
+// scrivere il nome rifaceva tutta la griglia a ogni lettera digitata.
+['pformat','porient','ncount','labelScheme','labelFontSel','labelSizeSlider'].forEach(id=>{
+  $(id).addEventListener('input', recomputeSoon);
+  $(id).addEventListener('change', recomputeSoon);
 });
 let resizeTimer;
 window.addEventListener('resize', ()=>{
@@ -1492,7 +1614,7 @@ renderLogoLibrary();
 refreshProjectList();
 </script>
 
-<script>window.VERSIONE="55";</script>
+<script>window.VERSIONE="56";</script>
 <script src="versione.js"></script>
 </body>
 </html>
